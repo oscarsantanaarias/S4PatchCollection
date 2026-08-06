@@ -1,0 +1,20 @@
+fix_c03_arcade_overflow.cpp
+
+Bug: CArcadeStream_ReadBytes_nodstcap at 0x01155F70 copies a P2P entry into
+a buffer using a length the other player controls. It only checks the
+source has enough bytes, never the destination size. The caller,
+CArcadeStream_ParseEntries at 0x014E0DD0, passes it a char[256] on the
+stack. Send an entry over 256 bytes and it overflows that buffer.
+
+Confirmed with two accounts. Inflated an outgoing entry to 300 bytes on
+one client, caught the oversized read on the other - size 300, caller
+inside ParseEntries.
+
+Only actually fired in Warfare, not Arcade. Hooked the write side at
+0x01155FC0 too, it sat idle through several arcade actions, then caught
+a real entry going out during a Warfare match, len 44 to 300. Primitive
+isn't arcade-only despite the name, just didn't get exercised from the
+arcade UI in testing.
+
+Fix: hook 0x01155F70, clamp size to 255 if it comes in over 256. Always
+on, no flag, no logging.

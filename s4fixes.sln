@@ -1,0 +1,25 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35931.197 d17.13
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "s4fixes", "src\s4fixes.vcxproj", "{A3F6B0A1-5C2E-4A9A-8B0E-1F2A3B4C5D6E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A3F6B0A1-5C2E-4A9A-8B0E-1F2A3B4C5D6E}.Debug|Win32.ActiveCfg = Debug|Win32
+		{A3F6B0A1-5C2E-4A9A-8B0E-1F2A3B4C5D6E}.Debug|Win32.Build.0 = Debug|Win32
+		{A3F6B0A1-5C2E-4A9A-8B0E-1F2A3B4C5D6E}.Release|Win32.ActiveCfg = Release|Win32
+		{A3F6B0A1-5C2E-4A9A-8B0E-1F2A3B4C5D6E}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {2bf01c99-df26-4826-89a2-37678ab2a413}
+	EndGlobalSection
+EndGlobal
