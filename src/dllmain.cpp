@@ -6,6 +6,7 @@ void InstallFix_M01_HttpCacheCap();
 void InstallFix_L01_StructVecCap();
 void InstallFix_DoS_ArcadeAlloc();
 void InstallFix_PerfG1_TipReload();
+void InstallFix_S2_X7Decrypt();
 extern "C" void StartHeapFixes(int lfh, int failsoft19, int badAlloc32);
 
 static DWORD WINAPI InitThread(LPVOID)
@@ -17,6 +18,7 @@ static DWORD WINAPI InitThread(LPVOID)
     // InstallFix_L01_StructVecCap(); // patches L-01, struct-vector count DoS
     // InstallFix_DoS_ArcadeAlloc(); // patches DoS, arcade stream alloc OOM
     // InstallFix_PerfG1_TipReload(); // perf G1, loading-tip table re-parse per screen
+    // InstallFix_S2_X7Decrypt(); // patches S2, encrypted .x7 short-file underflow + OOM
     StartHeapFixes(1, 1, 0); // patches C-01, frame-map heap overflow + OOM fail-soft (badAlloc32 off, unproven)
     return 0;
 }

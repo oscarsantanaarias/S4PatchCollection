@@ -38,3 +38,6 @@ change it in the vcxproj if your client lives elsewhere.
   operator new[] on an attacker 4-byte size -> ~2GB OOM. Clamps to 4MB.
 - `patches/fix_perf_g1_tipreload.cpp` - perf: loading-tip table re-parsed every
   loading screen (0x13DA240). Repoints its reparse call (0x13DA462) to parse once.
+- `patches/fix_s2_x7decrypt.cpp` - S2: encrypted .x7 decrypt (0x1B42C50) underflows
+  (Size-8)>>2 on a <8-byte file (OOB read) and allocs the first-4-bytes size (~4GB
+  OOM). Gates Size>=8 and SEH-wraps the alloc throw.

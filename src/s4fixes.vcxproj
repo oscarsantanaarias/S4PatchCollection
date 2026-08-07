@@ -96,6 +96,7 @@
     <ClCompile Include="patches\fix_l01_structvec_cap.cpp" />
     <ClCompile Include="patches\fix_m01_httpcache_cap.cpp" />
     <ClCompile Include="patches\fix_perf_g1_tipreload.cpp" />
+    <ClCompile Include="patches\fix_s2_x7decrypt.cpp" />
     <ClCompile Include="patches\heap_fixes.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
