@@ -90,7 +90,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="patches\fix_c02_enchant_oob.cpp" />
     <ClCompile Include="patches\fix_c03_arcade_overflow.cpp" />
+    <ClCompile Include="patches\fix_dos_arcade_alloc.cpp" />
+    <ClCompile Include="patches\fix_l01_structvec_cap.cpp" />
+    <ClCompile Include="patches\fix_m01_httpcache_cap.cpp" />
+    <ClCompile Include="patches\fix_perf_g1_tipreload.cpp" />
+    <ClCompile Include="patches\heap_fixes.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
