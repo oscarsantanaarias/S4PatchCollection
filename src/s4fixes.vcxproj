@@ -90,14 +90,26 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="patches\fix_c02_enchant_oob.cpp" />
-    <ClCompile Include="patches\fix_c03_arcade_overflow.cpp" />
-    <ClCompile Include="patches\fix_dos_arcade_alloc.cpp" />
-    <ClCompile Include="patches\fix_l01_structvec_cap.cpp" />
-    <ClCompile Include="patches\fix_m01_httpcache_cap.cpp" />
-    <ClCompile Include="patches\fix_perf_g1_tipreload.cpp" />
-    <ClCompile Include="patches\fix_s2_x7decrypt.cpp" />
-    <ClCompile Include="patches\heap_fixes.cpp" />
+    <ClCompile Include="patches\Enchant_OOB_Fix.cpp" />
+    <ClCompile Include="patches\Arcade_StackOverflow_Fix.cpp" />
+    <ClCompile Include="patches\Arcade_Alloc_Fix.cpp" />
+    <ClCompile Include="patches\StructVector_Cap_Fix.cpp" />
+    <ClCompile Include="patches\HttpImageCache_Fix.cpp" />
+    <ClCompile Include="patches\FileExists_Cache.cpp" />
+    <ClCompile Include="patches\Memory_Jump_Fix.cpp" />
+    <ClCompile Include="patches\LoadingTip_Cache.cpp" />
+    <ClCompile Include="patches\X7Decrypt_Guard.cpp" />
+    <ClCompile Include="patches\BlobTree_Guard.cpp" />
+    <ClCompile Include="patches\Scene_Leak_Fix.cpp" />
+    <ClCompile Include="patches\S4hd_Mount_Guard.cpp" />
+    <ClCompile Include="patches\ResWrapper_Leak_Fix.cpp" />
+    <ClCompile Include="patches\LzoS4_Size_Guard.cpp" />
+    <ClCompile Include="patches\P2P_Container_DoS_Guard.cpp" />
+    <ClCompile Include="patches\IDocument_Reload_Leak_Fix.cpp" />
+    <ClCompile Include="patches\XmlOverRead_Guard.cpp" />
+    <ClCompile Include="patches\Heap_Fixes.cpp" />
+    <ClCompile Include="enhancements\Fps.cpp" />
+    <ClCompile Include="enhancements\New_Actor_State.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

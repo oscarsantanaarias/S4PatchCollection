@@ -1,0 +1,348 @@
+S4Fixes - what each fix is and why I did it
+
+All the addresses here are from the current S10 build (base 0x00E80000). On another
+client you relocate them by strings or signature, I explain the method down in the
+FileExists part which is the easiest one to find again.
+
+Install order in dllmain.cpp is:
+  C03, PerfFileExistsCache, RamJnsPatch, C02, M01, L01, DoS, PerfG1, S2, StartHeapFixes
+
+
+Arcade_Alloc_Fix (DoS) at 0x01155B90
+This one is the arcade stream allocator. I looked at it in ghidra and it just takes
+the size straight from whatever the caller hands it, operator new on param_1 and then
+it writes the stream end as *(this+4) + param_1, no check at all. So if the size comes
+big it just OOMs the client. I clamped it to 4MB and since the arg is both the alloc
+size AND the recorded stream end, clamping keeps both consistent, there's no OOB, you
+just get a stream smaller than what was declared. Real arcade streams are a few KB
+anyway so it never trips on legit data. Worked fine, entered arcade and played.
+
+
+Arcade_StackOverflow_Fix (C03)
+This is the arcade P2P entry reader and it's a stack overflow. The reader itself is
+FUN_01155f70 and the problem is it passes the attacker's length as its own destination
+bound, the memcpy_s ends up being memcpy_s(param_1, param_2, this+0x10, param_2) so the
+size and the limit are the same thing, the check does nothing. The buffer that actually
+overflows is up in the P2P caller FUN_014e0dd0, it's a local_107[255] and it reads a
+4 byte length off the peer into local_118 then does FUN_01155f70(param_1, &local_108,
+local_118), and local_118 can be bigger than 256. Confirmed live, it's active.
+
+
+Enchant_OOB_Fix (C02) at 0x01C207C0 and 0x01C25600
+These two are the renewal-enchant loaders. Both of them write into a table using an
+index that comes straight out of the file with no validation, so it's an OOB write and
+it corrupts the heap. In 0x01C207C0 the write is memcpy to (local_bc*0x18 + this) with
+stride 24, in 0x01C25600 it's (local_9c*0x10 + this) with stride 16, and local_bc /
+local_9c are the file's index. What I did is grab the table base when we enter the
+loader plus the HeapSize, and guard both memcpys (0x01C20B2D and 0x01C25945) against
+the real range. If the loader hasn't run yet I don't block, I don't want to break the
+load. Test is just go into renewal enchant and enchant something.
+
+
+HttpImageCache_Fix (M01)
+The http image cache never evicts anything. GetImage (0x0142C570) calls LoadTexture
+(0x0142C650), it builds a texture and inserts it into a per-url std::map and nothing
+ever removes it, so it just grows forever. The insert function (0x0142CA80) is generic,
+tons of callers use it, so I can't hook the function itself, instead I repoint only the
+call site inside LoadTexture (0x0142C776) to a guard that stops inserting once we're
+past the cap. Cap is 1024 distinct images. Past that a new url just rebuilds its texture
+per request, the caller owns it and frees it with itself, so nothing in use gets
+dropped, no nulls, and I never clear the STL myself. If someone finds a safe clear
+routine later this could be clear-on-channel-change instead. Test is browse the shop and
+web banners for a while and make sure it doesn't freeze.
+
+
+StructVector_Cap_Fix (L01) at 0x01918580
+This is CMsg_ReadStructVector. It validates the count with cmp eax, ds:dword_256D3BC,
+that's a shared global cap of 0x100000, and then it preallocates and loops that many
+ignoring per-element failure. So a huge count makes a giant vector and OOMs you. I can't
+lower the global because other readers share that 1MB cap, so I repoint only the disp32
+of that one instruction (0x019185DC) to my own smaller cap. I set it to 0x40000, that's
+256K elements, prealloc stays under 16MB, way above any real struct-vector. If the
+instruction isn't the cmp eax,[disp32] I expect I bail. It's a pure defense so on normal
+use it's inert.
+
+
+LoadingTip_Cache (PerfG1)
+LoadRandomLoadingTip_x7 (0x013DA240) clears and re-parses the whole loading tip table
+(Language/_rc_ingame_loading_tip_text.x7) on EVERY loading screen just to pick one
+random tip out of it. The reparse function (0x01B5A210) is shared so I repoint only its
+call site inside LoadRandomLoadingTip (0x013DA462) to a guard that parses once, the
+random pick still runs every time over the table that's already loaded. Worst case if
+something clears the table somewhere else you get missing tips which is cosmetic, never
+a crash. You won't see any visual change on loadings.
+
+
+X7Decrypt_Guard (S2) at 0x01B42C50
+Decrypt_X7_File. There's two ways to blow it up with a controlled file. First, it does
+Sizea = (Size - 8) >> 2 and if the file is under 8 bytes that underflows to about
+0x3FFFFFFF, then it new[]s that four times and the loop reads 4*Sizea out of Src, so
+around a gig of allocs and a massive OOB read. Second, it takes the declared
+decompressed size from the first 4 bytes of the file XORed with a key (v26 = *Src ^
+0xFE292513) and new[](v26+1), so you just set it to ~4GB and OOM. The fix is require
+Size >= 8, because with 8 or more Sizea is fine and the loop reads Size-8 from Src+8
+which stays inside the buffer, and I SEH-wrap the call so the ~4GB alloc throw fails
+soft to 0 instead of killing the client. Test is normal startup, it loads
+content_setting.x7 and the rest, everything has to load.
+
+
+Memory_Jump_Fix (RamJnsPatch) at 0x01AEC298
+Inside FUN_01AEC1A0 there's a jns short loc_1AEC2D0 at 0x01AEC298 that was taking the
+wrong branch. When edx is >= 0 it jumped and left garbage in the struct that esi points
+to, and that trashed the RAM. The fall-through is the one that fills the struct's error
+fields properly. So I flip the byte, 0x79 (JNS) to 0xEB (JMP), which forces the good
+path every time. I do it at runtime from the DLL and only if the byte is still 0x79, so
+if the exe already ships patched to 0xEB it does nothing. This replaces the old iocp_fix
+and the manual patch to the exe.
+
+
+FileExists_Cache (PerfFileExistsCache) at 0x01B7AFB0
+This isn't a bug, it's an I/O storm. FileExists is the existence check for every single
+resource and the UI probes the same .dds across 6 candidate folders every frame. I
+measured it opening the lobby, 171,264 calls, only 7,972 unique paths, 170,091 of them
+misses, all under Resources/ which is read-only because the real file lives in
+_resources/<hash>. So it's the same dead lookups over and over hitting the disk. It's a
+bool __cdecl(LPCSTR) and every call does CreateFileA then CloseHandle. I cache the
+result, both hits and misses, per path, but only for the read-only prefixes (Resources/
+and resources/). First query goes to disk, everything after comes from the map. Writable
+paths like the .s4 saves pass through uncached so I never serve a stale answer on
+something that can change. With the fix I measured served_from_cache=163840 and
+disk_calls=3456, about 98% off the disk. It writes live stats to
+fileexists_cache_stats.txt next to the exe every 8192 hits.
+One thing to watch, if this runs at the same time as a logger that also hooks
+0x01B7AFB0, or the Hook_InternalFileExists in resource_loader.cpp from sneoz_protected
+which redirects to the pack at the same address, the detours step on each other, so use
+one or the other.
+
+The related resource functions on S10 are:
+  0x01B7AFB0  bool __cdecl FileExists(const char* path)              the choke point
+  0x01B7A890  char* __stdcall HashToStr(uint32 lo, uint32 hi, char*) hash to _resources/<hex>
+  0x01B7A000  uint64 __stdcall MakeHash(char* p1, char* p2)          name hash
+  0x01B7A450  uint64 __stdcall MakeHash(char* p1, char* p2)          variant
+
+If you need to find FileExists again on another client, search for the strings
+"Resources/XUI/image" or "_resources/", their xrefs land you in the resource resolver
+and FileExists is the bool f(char*) in the chain right before the real open. By
+signature it's the __cdecl with one const char* arg that ends in GetFileAttributes or a
+pack lookup and returns bool, and it's the most called thing in the whole pipeline,
+thousands per frame. To be sure just hook it and log path plus YES or NO, if the same
+Resources/XUI/... rains every frame that's the one. The logger is at
+C:\S4Plain\logeaResources.cpp.
+
+
+Scene_Leak_Fix (SceneLeak), ported from sneoz_protected
+This hooks game functions so it doesn't care about the graphics backend. There's three
+things in here.
+The leak is in the scene loader (0x01CB8500). It has an internal cache but the key never
+hits, I saw it looks up with a normalized key and inserts with the raw one, so it does
+operator new(0x48) and inserts for the same .scn on every single load and the map grows
+without limit until it hits the x86 ceiling around 2GB and freezes. What I do is intern
+externally by normalized path, on a hit I AddRef and return the same object without ever
+calling the original so nothing gets duplicated, on a miss I run the original once,
+AddRef and store. Only AddRef, nothing dangles. And the whitelist is fail-safe, I only
+intern images (.dds/.tga/.png and so on) which are read-only, scenes and models that the
+game actually mutates pass straight through with their own object so the render can't
+break. There's a CACHE_CAP of 8192 that pauses interning if it ever overflows.
+Second is a CPU thing. SetScene (0x01CCCF50) has a 10 slot cache and doesn't leak, but
+reloading the same .scn into the same slot repeats a bunch of string churn and
+Release/AddRef for nothing. So if the slot already has that path loaded less than 500ms
+ago I just skip it. If you ever see a UI visual glitch set ANTIRELOAD to false.
+I also pulled the AcRegisterKnownPatch call out since S4Fixes has no anticheat.
+Third is the Not Responding on the loading screen. CGamePlayState::EnterState
+(0x01318b00) loads everything synchronously inside one idle-callback of the message loop
+(0x01b29210, the PeekMessage peek loop) so it doesn't go back to PeekMessage for seconds
+and Windows ghosts the window, you can't drag it and it eats the click. The game-tick
+(0x0131f360) doesn't even run during EnterState. This loader is in that path
+(EnterState -> InitStage -> the char loader FUN_00f9cf90 -> FUN_0142e4e0 -> 0x01CB8500)
+and it gets called a lot, so hkLoadScene pumps the Windows queue while we're in there,
+with a 50ms throttle and a reentrancy guard, and it re-posts WM_QUIT. FileExists doesn't
+help with this one because it reads from the .s4hd pack, it's not in EnterState.
+
+
+Fps.cpp (GameEnhancements), ported from sneoz_protected without ImGui
+This is the FPS limiter plus FOV plus the framerate-dependent physics fixes. I stripped
+everything ImGui, the Delete-key overlay menu, and d3d11_redirect and the anticheat. All
+the values come out of config.ini (sections [fps], [fov], [physics]), there's no in-game
+menu to edit them live.
+The limiter is the Kethen style, it hooks game_tick (0x0131f360) and uses
+NtDelayExecution up to a target buffer then spins the rest so it doesn't burn a whole
+core. The FOV hooks fov_update (0x01202ad0) and remaps cam+0x158 from the 60/66/80
+presets to your configured value then restores the preset after the original runs so it
+doesn't break the per-state selection, the min_frametime constant is at 0x01f4ebd8 and
+the speed dampeners are repointed at 9 sites to scale speed by the real frametime. The
+framerate physics live in move_actor_by (0x00fa3960, call site 0x00faed67), that's the
+aerial smoothing, the exo jump (state 63, configurable multiplier), the plasma sword
+stun-drop (state 45) and the normal jump multiplied by FPS, and fun_005e4020
+(0x010730e0) captures set_drop_val for the plasma fix.
+Entry point is StartGameEnhancements(), it spins a thread that loads the config and
+hooks. The config keys are [fps]max_framerate, [fov]field_of_view /
+center_field_of_view / sprint_field_of_view, [physics]exo_jump_multiplier /
+flight_evade_up_multiplier.
+
+
+BlobTree_Guard (S1) at 0x01C79000
+Deserialize_Blob_Tree (entry 0x01C79000, workers at 0x01C78880 and 0x01C78BF0). The dst
+side is fine, it's new[](len) so the writes are bounded, but the source buffer is never
+checked and the recursive worker FUN_01c78bf0 advances a cursor using sizes read from
+the source itself and recurses with only a base pointer, no source end, so it's an OOB
+read that crashes, not a write corruption. In the report reachability is marked as
+suspect, it's the last network hop I didn't fully close, but the entry sits in the
+CMessage deserializer cluster at 0x0191xxxx so it's probably reachable. I did the
+non-invasive thing, SEH-wrap the entry (__thiscall(this,src), retn 4), if the OOB read
+throws an access violation I catch it and return 0 like the deserialize just failed
+instead of crashing. It only ever fires on a real AV, legit traffic never goes out of
+range. The one downside is if the AV lands mid-recursion the partial dst new[] leak,
+which I'll take over a crash on a malicious frame we're dropping anyway. If reachability
+gets confirmed and you want it robust, thread a source-end bound through the recursion
+the way CMessage_ReadBytes_SrcBounded does, the report suggests the same.
+Note on C-01, it doesn't have its own file, it's already inside Heap_Fixes.cpp on the
+FastArray8_Resize hook (0x01B0DAF0). That function does iVar2 * 8 for the alloc with no
+overflow guard, so I added if ((unsigned)a1 > 0x100000u) return 0, which rejects the
+out-of-range count and kills both variants, the 8*count wrap corruption and the 2GB OOM.
+The s10.txt that listed it as still live is an old summary.
+
+
+New_Actor_State
+This is the system to add new actor-states, it's moddable. It only hooks GetState
+(0x00F8A1C0) and GetCurrentStateID (0x00F8A130) so it doesn't collide with Fps.cpp which
+is on MoveActorBy and GameTick. Entry is StartNewActorState().
+How the state machine actually works, I verified this in IDA. GetState does a linear
+search, begin is [this+8] and end is [this+0xC], and it matches by [CState+0x20] == id.
+It's not an indexed array so the ids aren't bounded by a table, the real ceiling is one
+byte because actor_state lives at actor_ctx+0xEC and the P2P wire is a byte too, so 256
+states 0x00 to 0xFF, and 0x45 to 0xFE are free (about 185), 0xFF is NONE. On the CState,
++0x20 is the id, +0x118 is the substate, +0xD4 is the vector<AnimParam> which are the
+clips. SetSubState (0x010B3050) indexes AnimParam[substate] at +0xD4 to animate.
+RegisterCState (0x00F87BC0) registers the CState class into Lua (SetStateType,
+SetStateAtInput, Input and so on) and the actorstates_*.lua handle the animation.
+The way I do it is a clone, patched_get_state returns a clone (VirtualAlloc 0x100 copied
+from the source with +0x20 overwritten to the new id) for any id in the g_custom table.
+A poll thread watches the keys and ApplyCustomStateById enters the state through
+orig_set_current_state, and GetCurrentStateID reports it for k_custom_hold_ms. It
+registers nothing in the game, the hook just fakes the id. The clone inherits the source
+animation, if you want its own animation you register the id in the real pack's Lua,
+that part is optional.
+The g_custom table, edit or add lines of { id, source, VK_key, nullptr }:
+  0x45 src 0x05 Numpad1 | 0x46 src 0x2D Numpad2 | 0x47 src 0x1F Numpad3 |
+  0x48 src 0x08 Numpad4 | 0x49 src 0x15 Numpad5 | 0x4A src 0x06 Numpad6 |
+  0x4B src 0x22 Numpad7 | 0x4C src 0x2C Numpad8 | 0x4D src 0x26 Numpad9 |
+  0x4E src 0x1D Numpad0
+The S10 functions are GetCurrentStateID 0x00F8A130, GetState 0x00F8A1C0,
+SetCurrentState 0x00F8A0B0, ChangeState 0x00F8A980, RegisterCState 0x00F87BC0,
+SetSubState 0x010B3050, fetch_actor_ctx 0x00F2EFD0 (actor_state at +0xEC). There's a
+standalone version with logging and a console plus a Mega Plasma Dash demo (0x44,
+physics in MoveActorBy) at C:\Users\sneo\Desktop\S4fps\new_state.cpp, and the tutorial
+is howto_Create_actor_state.txt.
+
+
+LzoS4_Size_Guard (LZO)
+This is a remote RCE. There's 8 callers of lzo1x_decompress_safe (0x01B7CD50) that read
+a 4 byte decompressed size out of the blob (shop op1076, fumbi, collectbook, .s4, all
+server controlled) without validating it, they do new[](header+1) which wraps
+(0xFFFFFFFF+1 = 0, so a zero size buffer) and then pass the raw header as the capacity,
+so the decompressor which is safe by itself never reaches its own cap and you get a
+controlled heap overflow. The bug is in the caller, not in lzo. The vulnerable callers,
+as {new-site, dec-site} pairs, are:
+  FUN_01bf4730 {0x01BF49DF, 0x01BF4A17} (.s4)
+  FUN_00f6a2c0 {0x00F6AED7, 0x00F6B04A} (the generic decoder, 64 call sites)
+  FUN_01c16300 {0x01C165BC, 0x01C165F4} / 01c16c40 {0x01C16EFC, 0x01C16F34} /
+  01c17590 {0x01C1784C, 0x01C17884} / 01c17ef0 {0x01C181A6, 0x01C181DE} /
+  01c4d8a0 {0x01C4DB6F, 0x01C4DBA7} (.s4)
+  FUN_01b42c50 {0x01B4301B, 0x01B430DB} (.x7, and the X7Decrypt_Guard SEH does not cover
+  this wrap)
+The safe ones I don't touch are FUN_01649620 / 0164a930 (alloc equals capacity, no +1)
+and FUN_019077a0. The fix is a table of 8 pairs and 2 stateless hooks through
+RepointCall, hkNew clamps header+1 and hkDec clamps *cap, both through Sane() to a 128MiB
+ceiling so the alloc and the capacity stay consistent. All the new-sites call 0x01B25574
+and the dec-sites call 0x01B7CD50. Test is shop, fumbi, collectbook and loading a .s4,
+no crash.
+
+
+P2P_Container_DoS_Guard (P2PDoS)
+This is a one-frame DoS in the P2P container 20025. FUN_014DCD40 reads a sub-msg count
+and FUN_014E0DD0 reads an entry count, both a 4 byte count off the peer with no
+validation, and they loop allocating and retaining into a std::list, so a peer sends
+count=0x7FFFFFFF and the victim either OOM-crashes or freezes, the reader doesn't signal
+any underflow, the loop just spins to the full count. The fix is a RepointCall to the two
+count-read sites (0x014DCD52 and 0x014E0DFF), each sub-entry consumes at least 4 bytes so
+a legit count can never exceed remaining/4 and I clamp to that, it's lossless. On
+reachability, the 20025 is asleep in a normal match (state 4), it only fills up in
+host-P2P (arcade, scenario, horde, state 2) so that's where this matters. I verified it
+live with pruebaTest5, F7 for the diag.
+
+
+S4hd_Mount_Guard (F01) at 0x00F1F220
+s4hd_mount, runs at startup, not network. It does _Size = vfunc() then uVar1 = _Size-0x20
+with no _Size>=0x20 guard, so a small size underflows to about 4GB and operator new
+throws bad_alloc and terminates. It fires with a truncated or corrupt .s4hd, and the
+anti-tamper MD5 runs after the mount so it doesn't cover this. I SEH-wrap the call (same
+pattern as X7) and zero *outSize, catch the bad_alloc and fail soft instead of
+terminating. Test is normal startup.
+
+
+ResWrapper_Leak_Fix (L03) at 0x01B32730
+ResMgr_LoadOrAdopt. The caller news a wrapper (param_2) and the manager either adopts it
+on success or frees it if it's already cached or the load failed. The factory==NULL
+branch, which is when the extension is unknown and FUN_01B34B00 returns 0, does not free
+param_2, so you leak one wrapper per attempt. The fix saves param_2 in TLS on an entry
+Detour (save and restore so it's nesting safe) and RepointCalls the factory (0x01B32807),
+and if it returns 0 I free the wrapper with vtable[0](1). Test is load a resource with an
+unknown extension.
+One thing I want to be clear about because I checked it carefully, the success path is
+NOT a leak, don't try to "fix" it. The wrapper adoption FUN_00f89a80 is
+*(this+0x20)=piVar3, a raw store with no AddRef, which means it transfers the creation
+ref. So the real model is factory gives rc=1, the adoption transfers it and it stays 1,
+then the map insert AddRefs to rc=2, two owners, the wrapper and the map. There's no
+creation-ref leak there. Same with FUN_01cb8500, local_c90 is the returned ref with no
+AddRef, it's a borrowed pointer, the caller doesn't own it. If you put a Release on
+either of those you get a use-after-free. Leave them alone.
+
+
+IDocument_Reload_Leak_Fix (DocLeak) at 0x01CB0300
+FUN_01cb0300 is the document setter. It assigns the neighbor field this+0xd8 with the
+safe IntrusivePtr_Assign, but then it overwrites this+0xdc (a fresh IDocument from
+FUN_01cdbb40) with a raw store and never releases the one that was already there. On
+every reload (FUN_01cb0a10) +0xdc already held a live one, so you leak one IDocument per
+reload. That field is single-owner, the destructor (FUN_01caf550) null-checks it and
+frees it with vtable[0](1). I checked that the reload doesn't pre-free it, so there's no
+double-free, and it's a fresh new every time, so no self-assign. The fix is a Detour on
+the setter that frees the old +0xdc with the same method the destructor uses, right
+before the original overwrites it. Test is change map or character a bunch of times and
+watch the RAM stay stable.
+
+
+XmlOverRead_Guard
+XML parser, TinyXML style on a NUL-terminated buffer. FUN_01b47500 handles the comment
+"-->" and FUN_01b45780 handles CDATA "]]>" and quoted attributes, and both do cursor +=
+strlen(delim) after a loop that exits either on the NUL or on a match, without telling
+the two apart. So with unterminated input it exits on the NUL and the += pushes the
+pointer 1 to 3 bytes past the buffer, and the over-read happens when the caller
+dereferences. Severity is low, .x7 and .xml are local files not network, and it only
+happens with a corrupt or truncated file. The fix is no surgery, I Detour both functions
+and clamp the returned pointer to the first NUL reachable from the input cursor, so valid
+input is unchanged and truncated input returns the NUL and the caller stops. Test is
+normal use.
+
+XmlParseLeak, this one lives inside X7Decrypt_Guard.cpp
+FUN_01d11310 is a .x7 consumer that frees the file object (FUN_01b79fb0) only on
+success, so if the parse fails it leaks one file object. I folded it into the
+FUN_01b42c50 hook since the X7 guard already Detours that, an extra Detour on
+FUN_01b79480 saves the file object in TLS, and in hkDecrypt if the parse failed and the
+caller is FUN_01d11310 (gated by the return address 0x01d113e9) I free it the same way
+the success path would (FUN_01b79fb0(mgr, obj)). Gating by the return address means zero
+effect on any other caller of FUN_01b42c50, so no double-free, the success path frees on
+its own. Low severity, only with a corrupt .x7 that fails to parse.
+
+
+One note on the loading-screen freeze, the pump did NOT solve it. The async load is
+waited on with several busy-polls on the UI thread with Sleep (FUN_0132d730 around 14.5s,
+FUN_00f1dbd0 around 5.6s), frozen in NtDelayExecution. Pumping the queue wasn't the right
+approach in the end. When I diagnosed it with an EIP+stack sampler (suspend the thread) it
+showed eip=77D136CC and returns from the .exe, and the big loop addresses are inside
+FUN_0132d730 (0x0132D741).
+
+
+Stuff I discarded from sneoz_protected because it's not needed here: anticheat.cpp,
+d3d11_redirect.cpp (DXVK), warfare_bots_fix.cpp, iocp_fix.cpp (replaced by RamJnsPatch),
+resource_loader.cpp. And I haven't ported mimalloc_swap.cpp yet, that one needs mimalloc
+added to the build.

@@ -1,0 +1,344 @@
+S4Fixes - que es cada fix y por que lo hice
+
+Todas las direcciones son del build S10 actual (base 0x00E80000). En otro cliente las
+relocalizas por strings o firma, el metodo lo explico abajo en la parte de FileExists
+que es la mas facil de volver a encontrar.
+
+El orden de install en dllmain.cpp es:
+  C03, PerfFileExistsCache, RamJnsPatch, C02, M01, L01, DoS, PerfG1, S2, StartHeapFixes
+
+
+Arcade_Alloc_Fix (DoS) en 0x01155B90
+Este es el allocator del stream de arcade. Lo mire en ghidra y agarra el tamano
+directo de lo que le pase el caller, hace operator new sobre param_1 y despues escribe
+el fin del stream como *(this+4) + param_1, sin ningun chequeo. Asi que si el tamano
+viene grande simplemente OOMea el cliente. Lo clampie a 4MB y como el arg es a la vez
+el tamano del alloc Y el fin de stream que registra, clampear deja los dos consistentes,
+no hay OOB, solo te queda un stream mas chico que lo declarado. Los streams reales de
+arcade son unos KB igual asi que nunca salta con data legitima. Anduvo bien, entre a
+arcade y jugue.
+
+
+Arcade_StackOverflow_Fix (C03)
+Este es el reader de la entry del P2P de arcade y es un stack overflow. El reader es
+FUN_01155f70 y el problema es que pasa el largo del atacante como su propia cota de
+destino, el memcpy_s termina siendo memcpy_s(param_1, param_2, this+0x10, param_2), o
+sea el tamano y el limite son la misma cosa, el chequeo no hace nada. El buffer que
+realmente desborda esta arriba en el caller P2P FUN_014e0dd0, es un local_107[255], lee
+un largo de 4 bytes del peer a local_118 y despues hace FUN_01155f70(param_1,
+&local_108, local_118), y local_118 puede ser mas grande que 256. Confirmado en vivo,
+esta activo.
+
+
+Enchant_OOB_Fix (C02) en 0x01C207C0 y 0x01C25600
+Estos dos son los loaders del renewal-enchant. Los dos escriben en una tabla usando un
+indice que sale directo del archivo sin validar nada, asi que es un OOB write y corrompe
+el heap. En 0x01C207C0 el write es memcpy a (local_bc*0x18 + this) con stride 24, en
+0x01C25600 es (local_9c*0x10 + this) con stride 16, y local_bc / local_9c son el indice
+del archivo. Lo que hice es capturar la base de la tabla cuando entramos al loader mas
+el HeapSize, y guardar los dos memcpy (0x01C20B2D y 0x01C25945) contra el rango real. Si
+el loader todavia no corrio no bloqueo, no quiero romper la carga. La prueba es entrar a
+enchant renewal y enchantar algo.
+
+
+HttpImageCache_Fix (M01)
+El cache de imagenes http nunca desaloja nada. GetImage (0x0142C570) llama a LoadTexture
+(0x0142C650), crea la textura y la mete en un std::map por-url y nada la saca nunca, asi
+que crece para siempre. La funcion de insert (0x0142CA80) es generica, la usan un monton
+de callers, asi que no puedo hookear la funcion en si, en vez de eso repunto solo el call
+site dentro de LoadTexture (0x0142C776) a un guard que deja de insertar pasado el cap. El
+cap es 1024 imagenes distintas. Pasado eso una url nueva simplemente recrea su textura por
+request, el caller la posee y la libera con el mismo, asi que nada que este en uso se
+suelta, sin nulls, y nunca hago clear del STL yo. Si mas adelante alguien encuentra una
+rutina de clear segura esto podria ser clear-al-cambiar-de-canal. La prueba es navegar el
+shop y los banners web un rato y que no se congele.
+
+
+StructVector_Cap_Fix (L01) en 0x01918580
+Este es CMsg_ReadStructVector. Valida el count con cmp eax, ds:dword_256D3BC, que es un
+cap global compartido de 0x100000, y despues prealloca y loopea ese tanto ignorando el
+fallo por-elemento. Asi que un count enorme hace un vector gigante y te OOMea. No puedo
+bajar el global porque otros lectores comparten ese cap de 1MB, asi que repunto solo el
+disp32 de esa unica instruccion (0x019185DC) a mi propio cap mas chico. Lo puse en
+0x40000, o sea 256K elementos, el prealloc queda abajo de 16MB, muy por encima de
+cualquier struct-vector real. Si la instruccion no es el cmp eax,[disp32] que espero,
+me salgo. Es pura defensa asi que en uso normal esta inerte.
+
+
+LoadingTip_Cache (PerfG1)
+LoadRandomLoadingTip_x7 (0x013DA240) limpia y re-parsea toda la tabla de tips de carga
+(Language/_rc_ingame_loading_tip_text.x7) en CADA pantalla de carga solo para elegir un
+tip random de ahi. La funcion de reparse (0x01B5A210) es compartida asi que repunto solo
+su call site dentro de LoadRandomLoadingTip (0x013DA462) a un guard que parsea una vez,
+el pick random sigue corriendo cada vez sobre la tabla que ya esta cargada. Peor caso si
+algo limpia la tabla en otro lado te quedan tips faltantes que es cosmetico, nunca un
+crash. No vas a ver ningun cambio visual en los loadings.
+
+
+X7Decrypt_Guard (S2) en 0x01B42C50
+Decrypt_X7_File. Hay dos maneras de reventarlo con un archivo controlado. La primera,
+hace Sizea = (Size - 8) >> 2 y si el archivo tiene menos de 8 bytes eso hace underflow a
+casi 0x3FFFFFFF, despues hace new[] de eso cuatro veces y el loop lee 4*Sizea de Src, o
+sea como un giga de allocs y un OOB read enorme. La segunda, agarra el tamano
+descomprimido declarado de los primeros 4 bytes del archivo XOR una key (v26 = *Src ^
+0xFE292513) y new[](v26+1), asi que lo pones en ~4GB y OOMea. El fix es exigir Size >= 8,
+porque con 8 o mas Sizea queda bien y el loop lee Size-8 desde Src+8 que se queda adentro
+del buffer, y SEH-wrapeo el call para que el throw del alloc de ~4GB haga fail-soft a 0 en
+vez de matar el cliente. La prueba es arranque normal, carga content_setting.x7 y el
+resto, todo tiene que cargar.
+
+
+Memory_Jump_Fix (RamJnsPatch) en 0x01AEC298
+Adentro de FUN_01AEC1A0 hay un jns short loc_1AEC2D0 en 0x01AEC298 que estaba tomando la
+rama equivocada. Cuando edx es >= 0 saltaba y dejaba basura en la struct a la que apunta
+esi, y eso jodia la RAM. El fall-through es el que llena bien los campos de error de la
+struct. Asi que doy vuelta el byte, 0x79 (JNS) a 0xEB (JMP), que fuerza el path bueno
+siempre. Lo hago en runtime desde la DLL y solo si el byte sigue siendo 0x79, asi que si
+el exe ya viene parchado a 0xEB no hace nada. Esto reemplaza el viejo iocp_fix y el
+parche manual al exe.
+
+
+FileExists_Cache (PerfFileExistsCache) en 0x01B7AFB0
+Este no es un bug, es un storm de I/O. FileExists es el chequeo de existencia de todo
+recurso y la UI prueba el mismo .dds en 6 carpetas candidatas cada frame. Lo medi abriendo
+el lobby, 171.264 llamadas, solo 7.972 paths unicos, 170.091 de esas son miss, todas bajo
+Resources/ que es solo-lectura porque el archivo real vive en _resources/<hash>. O sea son
+los mismos lookups muertos una y otra vez pegandole al disco. Es un bool __cdecl(LPCSTR) y
+cada llamada hace CreateFileA y despues CloseHandle. Yo cacheo el resultado, tanto los hit
+como los miss, por path, pero solo para los prefijos solo-lectura (Resources/ y
+resources/). La primera consulta va al disco, todo lo que viene despues sale del map. Los
+paths escribibles como los .s4 de guardado pasan sin cachear asi que nunca sirvo una
+respuesta vieja de algo que puede cambiar. Con el fix medi served_from_cache=163840 y
+disk_calls=3456, como 98% fuera del disco. Escribe stats en vivo a
+fileexists_cache_stats.txt al lado del exe cada 8192 hits.
+Una cosa a cuidar, si esto corre al mismo tiempo que un logger que tambien hookea
+0x01B7AFB0, o el Hook_InternalFileExists de resource_loader.cpp de sneoz_protected que
+redirige al pack en la misma direccion, los detours se pisan, asi que usa uno o el otro.
+
+Las funciones de recursos relacionadas en S10 son:
+  0x01B7AFB0  bool __cdecl FileExists(const char* path)              el choke point
+  0x01B7A890  char* __stdcall HashToStr(uint32 lo, uint32 hi, char*) hash a _resources/<hex>
+  0x01B7A000  uint64 __stdcall MakeHash(char* p1, char* p2)          hash de nombre
+  0x01B7A450  uint64 __stdcall MakeHash(char* p1, char* p2)          variante
+
+Si necesitas encontrar FileExists de nuevo en otro cliente, busca los strings
+"Resources/XUI/image" o "_resources/", sus xrefs te dejan en el resolver de recursos y
+FileExists es el bool f(char*) en la cadena justo antes del open real. Por firma es el
+__cdecl con un arg const char* que termina en GetFileAttributes o un lookup del pack y
+devuelve bool, y es lo mas llamado de todo el pipeline, miles por frame. Para asegurarte
+hookealo y logueale el path mas YES o NO, si llueve el mismo Resources/XUI/... cada frame
+es esa. El logger esta en C:\S4Plain\logeaResources.cpp.
+
+
+Scene_Leak_Fix (SceneLeak), portado de sneoz_protected
+Esto hookea funciones del juego asi que no le importa el backend grafico. Hay tres cosas
+adentro.
+El leak esta en el scene loader (0x01CB8500). Tiene un cache interno pero la clave nunca
+acierta, vi que busca con una clave normalizada e inserta con la cruda, asi que hace
+operator new(0x48) e inserta por la misma .scn en cada carga y el mapa crece sin limite
+hasta que llega al techo de x86 como en 2GB y se congela. Lo que hago es internear
+externo por ruta normalizada, en un hit hago AddRef y devuelvo el mismo objeto sin llamar
+nunca al original asi nada se duplica, en un miss corro el original una vez, AddRef y
+store. Solo AddRef, nada queda colgando. Y la whitelist es fail-safe, internaeo solo las
+imagenes (.dds/.tga/.png y esas) que son solo-lectura, las escenas y modelos que el juego
+si modifica pasan derecho con su propio objeto asi el render no se rompe. Hay un CACHE_CAP
+de 8192 que pausa el interning si llega a desbordar.
+Lo segundo es un tema de CPU. SetScene (0x01CCCF50) tiene un cache de 10 slots y no fuga,
+pero recargar la misma .scn en el mismo slot repite un monton de string churn y
+Release/AddRef al pedo. Asi que si el slot ya tiene esa ruta cargada hace menos de 500ms
+lo salteo. Si alguna vez ves un glitch visual de UI pone ANTIRELOAD en false.
+Tambien saque la llamada a AcRegisterKnownPatch porque S4Fixes no tiene anticheat.
+Lo tercero es el Not Responding en la pantalla de carga. CGamePlayState::EnterState
+(0x01318b00) carga todo sincrono adentro de un solo idle-callback del message loop
+(0x01b29210, el loop de peek de PeekMessage) asi que no vuelve a PeekMessage por segundos
+y Windows fantasmea la ventana, no la podes arrastrar y se come el click. El game-tick
+(0x0131f360) ni siquiera corre durante EnterState. Este loader esta en ese path
+(EnterState -> InitStage -> el char loader FUN_00f9cf90 -> FUN_0142e4e0 -> 0x01CB8500) y
+se llama un monton, asi que hkLoadScene bombea la cola de Windows mientras estamos ahi
+adentro, con un throttle de 50ms y un guard de reentrancia, y re-postea WM_QUIT.
+FileExists no ayuda con esta porque lee del pack .s4hd, no esta en EnterState.
+
+
+Fps.cpp (GameEnhancements), portado de sneoz_protected sin ImGui
+Este es el limiter de FPS mas FOV mas los fixes de fisica que dependen del framerate. Le
+saque todo lo de ImGui, el overlay/menu de la tecla Delete, y el d3d11_redirect y el
+anticheat. Todos los valores salen de config.ini (secciones [fps], [fov], [physics]), no
+hay menu in-game para editarlos en vivo.
+El limiter es estilo Kethen, hookea game_tick (0x0131f360) y usa NtDelayExecution hasta un
+buffer de target y despues spinea el resto asi no quema un core entero. El FOV hookea
+fov_update (0x01202ad0) y remapea cam+0x158 de los presets 60/66/80 a tu valor configurado
+y despues restaura el preset cuando corre el original asi no rompe la seleccion
+por-estado, la constante min_frametime esta en 0x01f4ebd8 y los speed dampeners estan
+repunteados en 9 sitios para escalar la velocidad por el frametime real. La fisica por
+framerate vive en move_actor_by (0x00fa3960, call site 0x00faed67), esa es el smoothing
+aereo, el exo jump (state 63, multiplicador configurable), el stun-drop de la plasma sword
+(state 45) y el salto normal multiplicado por FPS, y fun_005e4020 (0x010730e0) captura
+set_drop_val para el fix de la plasma.
+El entry es StartGameEnhancements(), arranca un thread que carga la config y hookea. Las
+claves de config son [fps]max_framerate, [fov]field_of_view / center_field_of_view /
+sprint_field_of_view, [physics]exo_jump_multiplier / flight_evade_up_multiplier.
+
+
+BlobTree_Guard (S1) en 0x01C79000
+Deserialize_Blob_Tree (entry 0x01C79000, workers en 0x01C78880 y 0x01C78BF0). El lado del
+dst esta bien, es new[](len) asi que las escrituras estan acotadas, pero el buffer fuente
+nunca se chequea y el worker recursivo FUN_01c78bf0 avanza un cursor usando tamanos leidos
+del propio origen y recurre solo con un puntero base, sin fin de fuente, asi que es un OOB
+read que crashea, no una corrupcion de escritura. En el reporte la reachability quedo
+marcada como sospecha, es el ultimo hop de red que no cerre del todo, pero el entry esta
+en el cluster del deserializer de CMessage en 0x0191xxxx asi que probablemente sea
+alcanzable. Hice lo no invasivo, SEH-wrap del entry (__thiscall(this,src), retn 4), si el
+OOB read tira un access violation lo atrapo y devuelvo 0 como si el deserialize hubiera
+fallado en vez de crashear. Solo dispara ante un AV real, el trafico legitimo nunca sale
+de rango. La unica contra es que si el AV cae a mitad de la recursion las new[] parciales
+del dst leakean, lo cual me lo banco antes que un crash en un frame malicioso que estamos
+dropeando igual. Si se confirma el alcance y lo queres robusto, threa un source-end bound
+por la recursion como hace CMessage_ReadBytes_SrcBounded, el reporte sugiere lo mismo.
+Nota sobre C-01, no tiene archivo propio, ya esta adentro de Heap_Fixes.cpp en el hook de
+FastArray8_Resize (0x01B0DAF0). Esa funcion hace iVar2 * 8 para el alloc sin guard de
+overflow, asi que le agregue if ((unsigned)a1 > 0x100000u) return 0, que rechaza el count
+fuera de rango y mata las dos variantes, la corrupcion del wrap de 8*count y el OOM de
+2GB. El s10.txt que lo daba por vivo es un resumen viejo.
+
+
+New_Actor_State
+Este es el sistema para agregar actor-states nuevos, es moddeable. Solo hookea GetState
+(0x00F8A1C0) y GetCurrentStateID (0x00F8A130) asi que no choca con Fps.cpp que esta en
+MoveActorBy y GameTick. El entry es StartNewActorState().
+Como funciona el state machine, esto lo verifique en IDA. GetState hace una busqueda
+lineal, begin es [this+8] y end es [this+0xC], y matchea por [CState+0x20] == id. No es un
+array indexado asi que los ids no estan acotados por una tabla, el techo real es un byte
+porque actor_state vive en actor_ctx+0xEC y el wire P2P tambien es un byte, asi que 256
+estados de 0x00 a 0xFF, y del 0x45 al 0xFE estan libres (como 185), 0xFF es NONE. En el
+CState, +0x20 es el id, +0x118 es el substate, +0xD4 es el vector<AnimParam> que son los
+clips. SetSubState (0x010B3050) indexa AnimParam[substate] en +0xD4 para animar.
+RegisterCState (0x00F87BC0) registra la clase CState en Lua (SetStateType, SetStateAtInput,
+Input y esas) y los actorstates_*.lua manejan la animacion.
+La forma en que lo hago es un clone, patched_get_state devuelve un clone (VirtualAlloc
+0x100 copiado del source con +0x20 pisado al id nuevo) para cualquier id de la tabla
+g_custom. Un poll thread mira las teclas y ApplyCustomStateById entra el estado por
+orig_set_current_state, y GetCurrentStateID lo reporta durante k_custom_hold_ms. No
+registra nada en el juego, el hook solo falsifica el id. El clone hereda la animacion del
+source, si queres animacion propia registras el id en el Lua del pack real, esa parte es
+opcional.
+La tabla g_custom, editas o agregas lineas de { id, source, tecla_VK, nullptr }:
+  0x45 src 0x05 Numpad1 | 0x46 src 0x2D Numpad2 | 0x47 src 0x1F Numpad3 |
+  0x48 src 0x08 Numpad4 | 0x49 src 0x15 Numpad5 | 0x4A src 0x06 Numpad6 |
+  0x4B src 0x22 Numpad7 | 0x4C src 0x2C Numpad8 | 0x4D src 0x26 Numpad9 |
+  0x4E src 0x1D Numpad0
+Las funciones S10 son GetCurrentStateID 0x00F8A130, GetState 0x00F8A1C0, SetCurrentState
+0x00F8A0B0, ChangeState 0x00F8A980, RegisterCState 0x00F87BC0, SetSubState 0x010B3050,
+fetch_actor_ctx 0x00F2EFD0 (actor_state en +0xEC). Hay una version standalone con logging
+y consola mas un demo del Mega Plasma Dash (0x44, fisica en MoveActorBy) en
+C:\Users\sneo\Desktop\S4fps\new_state.cpp, y el tutorial es howto_Create_actor_state.txt.
+
+
+LzoS4_Size_Guard (LZO)
+Este es un RCE remoto. Hay 8 callers de lzo1x_decompress_safe (0x01B7CD50) que leen un
+tamano descomprimido de 4 bytes del blob (shop op1076, fumbi, collectbook, .s4, todo
+server controlado) sin validarlo, hacen new[](header+1) que hace wrap (0xFFFFFFFF+1 = 0,
+o sea un buffer de tamano cero) y despues pasan el header crudo como capacidad, asi que el
+decompresor que es seguro por si solo nunca alcanza su propio tope y te queda un heap
+overflow controlado. El bug esta en el caller, no en lzo. Los callers vulnerables, como
+pares {new-site, dec-site}, son:
+  FUN_01bf4730 {0x01BF49DF, 0x01BF4A17} (.s4)
+  FUN_00f6a2c0 {0x00F6AED7, 0x00F6B04A} (el decoder generico, 64 call sites)
+  FUN_01c16300 {0x01C165BC, 0x01C165F4} / 01c16c40 {0x01C16EFC, 0x01C16F34} /
+  01c17590 {0x01C1784C, 0x01C17884} / 01c17ef0 {0x01C181A6, 0x01C181DE} /
+  01c4d8a0 {0x01C4DB6F, 0x01C4DBA7} (.s4)
+  FUN_01b42c50 {0x01B4301B, 0x01B430DB} (.x7, y el SEH del X7Decrypt_Guard no tapa este
+  wrap)
+Los seguros que no toco son FUN_01649620 / 0164a930 (alloc igual a capacidad, sin el +1)
+y FUN_019077a0. El fix es una tabla de 8 pares y 2 hooks stateless por RepointCall, hkNew
+clampa header+1 y hkDec clampa *cap, los dos por Sane() a un techo de 128MiB asi el alloc
+y la capacidad quedan consistentes. Todos los new-sites llaman a 0x01B25574 y los dec-sites
+a 0x01B7CD50. La prueba es shop, fumbi, collectbook y cargar un .s4, sin crash.
+
+
+P2P_Container_DoS_Guard (P2PDoS)
+Este es un DoS de un frame en el contenedor P2P 20025. FUN_014DCD40 lee un count de
+sub-msgs y FUN_014E0DD0 lee un count de entries, los dos un count de 4 bytes del peer sin
+validacion, y loopean allocando y reteniendo en un std::list, asi que un peer manda
+count=0x7FFFFFFF y la victima o se OOM-crashea o se congela, el reader no senaliza ningun
+underflow, el loop simplemente gira hasta el count completo. El fix es un RepointCall a los
+dos count-read sites (0x014DCD52 y 0x014E0DFF), cada sub-entrada consume al menos 4 bytes
+asi que un count legitimo nunca puede pasar de remaining/4 y lo clampeo a eso, es lossless.
+Sobre reachability, el 20025 esta dormido en un match normal (state 4), solo se puebla en
+host-P2P (arcade, escenario, horde, state 2) asi que ahi es donde esto importa. Lo verifique
+en vivo con pruebaTest5, F7 para el diag.
+
+
+S4hd_Mount_Guard (F01) en 0x00F1F220
+s4hd_mount, corre al arranque, no es red. Hace _Size = vfunc() despues uVar1 = _Size-0x20
+sin guard de _Size>=0x20, asi que un size chico hace underflow a como 4GB y operator new
+tira bad_alloc y termina. Dispara con un .s4hd truncado o corrupto, y el MD5 anti-tamper
+corre despues del mount asi que no lo cubre. SEH-wrapeo el call (mismo patron que X7) y
+pongo *outSize en cero, atrapo el bad_alloc y hago fail-soft en vez de terminar. La prueba
+es arranque normal.
+
+
+ResWrapper_Leak_Fix (L03) en 0x01B32730
+ResMgr_LoadOrAdopt. El caller hace new de un wrapper (param_2) y el manager o lo adopta en
+exito o lo libera si ya esta cacheado o el load fallo. La rama factory==NULL, que es cuando
+la extension es desconocida y FUN_01B34B00 devuelve 0, no libera param_2, asi que leakeas
+un wrapper por intento. El fix guarda param_2 en TLS en un Detour de entrada (save y
+restore asi es nesting safe) y hace RepointCall al factory (0x01B32807), y si devuelve 0
+libero el wrapper con vtable[0](1). La prueba es cargar un recurso con extension
+desconocida.
+Una cosa que quiero dejar clara porque la chequie con cuidado, el success path NO es un
+leak, no intentes "arreglarlo". La adopcion del wrapper FUN_00f89a80 es
+*(this+0x20)=piVar3, un raw store sin AddRef, lo que significa que transfiere la ref de
+creacion. Asi que el modelo real es factory da rc=1, la adopcion la transfiere y queda en
+1, despues el map insert hace AddRef a rc=2, dos duenos, el wrapper y el map. No hay leak
+de la ref de creacion ahi. Lo mismo con FUN_01cb8500, local_c90 es la ref retornada sin
+AddRef, es un puntero prestado, el caller no lo posee. Si le pones un Release a cualquiera
+de esos te queda un use-after-free. Dejalos en paz.
+
+
+IDocument_Reload_Leak_Fix (DocLeak) en 0x01CB0300
+FUN_01cb0300 es el setter de documento. Asigna el campo vecino this+0xd8 con el
+IntrusivePtr_Assign seguro, pero despues pisa this+0xdc (un IDocument nuevo de
+FUN_01cdbb40) con un raw store y nunca libera el que ya estaba ahi. En cada recarga
+(FUN_01cb0a10) +0xdc ya tenia uno vivo, asi que leakeas un IDocument por recarga. Ese campo
+es de dueno unico, el destructor (FUN_01caf550) lo null-checkea y lo libera con
+vtable[0](1). Chequie que la recarga no lo pre-libera, asi que no hay double-free, y es un
+new fresco cada vez, asi que no hay self-assign. El fix es un Detour del setter que libera
+el viejo +0xdc con el mismo metodo que usa el destructor, justo antes de que el original lo
+pise. La prueba es cambiar de mapa o personaje un monton de veces y mirar que la RAM se
+mantenga estable.
+
+
+XmlOverRead_Guard
+Parser XML, estilo TinyXML sobre un buffer NUL-terminado. FUN_01b47500 maneja el comentario
+"-->" y FUN_01b45780 maneja el CDATA "]]>" y los atributos con comilla, y los dos hacen
+cursor += strlen(delim) despues de un loop que sale o en el NUL o en un match, sin
+distinguir los dos. Asi que con input sin cerrar sale en el NUL y el += empuja el puntero 1
+a 3 bytes fuera del buffer, y el over-read pasa cuando el caller derefea. La severidad es
+baja, los .x7 y .xml son archivos locales no red, y solo pasa con un archivo corrupto o
+truncado. El fix no es cirugia, hago Detour de las dos funciones y clampeo el puntero de
+retorno al primer NUL alcanzable desde el cursor de entrada, asi el input valido queda
+igual y el truncado devuelve el NUL y el caller para. La prueba es uso normal.
+
+XmlParseLeak, esta vive adentro de X7Decrypt_Guard.cpp
+FUN_01d11310 es un consumer de .x7 que libera el file object (FUN_01b79fb0) solo en exito,
+asi que si el parse falla leakea un file object. Lo plegue al hook de FUN_01b42c50 porque
+el X7 guard ya Detourea esa, un Detour extra en FUN_01b79480 guarda el file object en TLS,
+y en hkDecrypt si el parse fallo y el caller es FUN_01d11310 (gateado por el return address
+0x01d113e9) lo libero igual que lo haria el success path (FUN_01b79fb0(mgr, obj)). Gatear
+por el return address significa cero efecto en cualquier otro caller de FUN_01b42c50, asi
+que no hay double-free, el success path libera solo. Severidad baja, solo con un .x7
+corrupto que falla el parse.
+
+
+Una nota sobre el freeze de la pantalla de carga, el pump NO lo soluciono. La carga async
+se espera con varios busy-polls en el hilo de UI con Sleep (FUN_0132d730 como 14.5s,
+FUN_00f1dbd0 como 5.6s), frozen en NtDelayExecution. Bombear la cola no fue el approach
+correcto al final. Cuando lo diagnostique con un sampler de EIP+stack (suspendiendo el
+thread) mostro eip=77D136CC y retornos del .exe, y las direcciones del loop grande estan
+adentro de FUN_0132d730 (0x0132D741).
+
+
+Cosas que descarte de sneoz_protected porque aca no hacen falta: anticheat.cpp,
+d3d11_redirect.cpp (DXVK), warfare_bots_fix.cpp, iocp_fix.cpp (reemplazado por
+RamJnsPatch), resource_loader.cpp. Y todavia no portie mimalloc_swap.cpp, esa necesita
+meter mimalloc al build.

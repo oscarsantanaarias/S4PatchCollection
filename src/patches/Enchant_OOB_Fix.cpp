@@ -12,7 +12,7 @@ namespace
     const uintptr_t MEMCPY_SITE_2      = 0x01C25945;
     const unsigned  STRIDE_1           = 24;
     const unsigned  STRIDE_2           = 16;
-    const unsigned  FALLBACK_ROWS      = 4096; // ponytail: window used only if heap size lookup fails; upgrade path = read the true row-count field if ever identified
+    const unsigned  FALLBACK_ROWS      = 4096;
 
     struct Table { uintptr_t base; SIZE_T size; };
     Table g_t1 = { 0, 0 };
@@ -45,7 +45,7 @@ namespace
     bool InRange(const Table& t, uintptr_t dst, unsigned stride)
     {
         if (!t.base)
-            return true; // loader not seen yet (shouldn't happen) -> don't break loading
+            return true;
         return dst >= t.base && (dst + stride) <= (t.base + t.size);
     }
 
@@ -98,7 +98,7 @@ namespace
     }
 }
 
-void InstallFix_C02_EnchantOOB()
+void InstallEnchantOOBFix()
 {
     RepointCall(MEMCPY_SITE_1, (void*)guard1);
     RepointCall(MEMCPY_SITE_2, (void*)guard2);

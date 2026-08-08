@@ -17,7 +17,7 @@ namespace
     }
 }
 
-void InstallFix_C03_ArcadeOverflow()
+void InstallArcadeStackOverflowFix()
 {
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());

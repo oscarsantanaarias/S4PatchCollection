@@ -4,19 +4,10 @@
 
 namespace
 {
-    // CHTTPImageCache never evicts: GetImage (0x0142C570) -> LoadTexture
-    // (0x0142C650) creates a texture and inserts it into a url-keyed std::map
-    // via CHTTPImageCache_MapInsertIfAbsent (0x0142CA80). That insert helper is
-    // GENERIC (many callers), so we can't hook the function. Instead we repoint
-    // ONLY the call site inside LoadTexture (0x0142C776) to a guard that stops
-    // inserting past a cap. The map is bounded; beyond the cap a distinct url
-    // just re-creates its texture per request (owned by the caller, freed with
-    // it) - no eviction of in-use textures, no null returns, no STL clear.
     const uintptr_t INSERT_FN    = 0x0142CA80;
-    const uintptr_t CALL_SITE    = 0x0142C776; // call MapInsertIfAbsent inside LoadTexture
-    const long      CACHE_CAP    = 1024;       // ponytail: max distinct cached server images; upgrade path = clear-on-channel-change if a safe clear routine is ever found
+    const uintptr_t CALL_SITE    = 0x0142C776;
+    const long      CACHE_CAP    = 1024;
 
-    // __thiscall: this in ecx, 4 stack args, callee-cleaned -> matches __fastcall with a dummy edx
     typedef void* (__fastcall* tInsert)(void* thisMap, void* edx, void* out, int a2, void* a3, void* a4);
     tInsert oInsert = (tInsert)INSERT_FN;
     volatile long g_count = 0;
@@ -28,7 +19,7 @@ namespace
             InterlockedIncrement(&g_count);
             return oInsert(thisMap, edx, out, a2, a3, a4);
         }
-        *(int*)out = 0;          // cap reached: skip insert, return a defined empty pair (LoadTexture doesn't read it)
+        *(int*)out = 0;
         *((int*)out + 1) = 0;
         return out;
     }
@@ -47,7 +38,7 @@ namespace
     }
 }
 
-void InstallFix_M01_HttpCacheCap()
+void InstallHttpImageCacheFix()
 {
     RepointCall(CALL_SITE, (void*)guardInsert);
 }
