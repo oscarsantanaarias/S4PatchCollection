@@ -17,12 +17,16 @@ void InstallLzoS4SizeGuard();
 void InstallP2PContainerDoSGuard();
 void InstallIDocumentReloadLeakFix();
 void InstallXmlOverReadGuard();
+void InstallBattlEyeBypass();
 void StartGameEnhancements();
 void StartNewActorState();
 extern "C" void StartHeapFixes(int lfh, int failsoft19, int badAlloc32);
 
 static DWORD WINAPI InitThread(LPVOID)
 {
+    // this one has to land before the client boots, it can't wait for d3d9
+    InstallBattlEyeBypass();
+
     // wait for d3d9, patching too early gets us overwritten
     for (int i = 0; i < 600 && !GetModuleHandleA("d3d9.dll"); ++i)
         Sleep(50);
@@ -38,6 +42,10 @@ static DWORD WINAPI InitThread(LPVOID)
     InstallLoadingTipCache();
    InstallX7DecryptGuard();
     InstallBlobTreeGuard();
+    // known side effect: the per-slot anti-reload (500ms window over the 10 SetScene
+    // slots) sometimes skips a reload and leaves a collectionbook item on a stale
+    // scene, which shows up as a red/broken block. ANTIRELOAD=false or a lower
+    // ANTIRELOAD_MS in Scene_Leak_Fix.cpp if it gets annoying.
     InstallSceneLeakFix();
     InstallS4hdMountGuard();
     InstallResWrapperLeakFix();

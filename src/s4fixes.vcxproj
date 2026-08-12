@@ -45,10 +45,14 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>C:\S4Plain\</OutDir>
+    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <TargetName>sneoz</TargetName>
+    <TargetExt>.asi</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>C:\S4Plain\</OutDir>
+    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <TargetName>sneoz</TargetName>
+    <TargetExt>.asi</TargetExt>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -107,6 +111,7 @@
     <ClCompile Include="patches\P2P_Container_DoS_Guard.cpp" />
     <ClCompile Include="patches\IDocument_Reload_Leak_Fix.cpp" />
     <ClCompile Include="patches\XmlOverRead_Guard.cpp" />
+    <ClCompile Include="patches\BattlEye_Bypass.cpp" />
     <ClCompile Include="patches\Heap_Fixes.cpp" />
     <ClCompile Include="enhancements\Fps.cpp" />
     <ClCompile Include="enhancements\New_Actor_State.cpp" />
