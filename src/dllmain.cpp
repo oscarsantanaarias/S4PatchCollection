@@ -23,20 +23,21 @@ extern "C" void StartHeapFixes(int lfh, int failsoft19, int badAlloc32);
 
 static DWORD WINAPI InitThread(LPVOID)
 {
+    // wait for d3d9, patching too early gets us overwritten
+    for (int i = 0; i < 600 && !GetModuleHandleA("d3d9.dll"); ++i)
+        Sleep(50);
+    Sleep(500);
+
     InstallArcadeStackOverflowFix();
     InstallFileExistsCache();
-    InstallMemoryJumpFix();
+   InstallMemoryJumpFix();
     InstallEnchantOOBFix();
     InstallHttpImageCacheFix();
     InstallStructVectorCapFix();
     InstallArcadeAllocFix();
     InstallLoadingTipCache();
-    InstallX7DecryptGuard();
+   InstallX7DecryptGuard();
     InstallBlobTreeGuard();
-    // SIDE EFFECT conocido: el anti-reload por-slot (FIX 2, ventana 500ms de los
-    // 10 slots de SetScene) rara vez saltea recargar un slot -> un item del
-    // collectionbook queda con el scene stale (bloque rojo/roto). Si molesta:
-    // ANTIRELOAD=false (o bajar ANTIRELOAD_MS) en Scene_Leak_Fix.cpp.
     InstallSceneLeakFix();
     InstallS4hdMountGuard();
     InstallResWrapperLeakFix();
@@ -44,10 +45,11 @@ static DWORD WINAPI InitThread(LPVOID)
     InstallP2PContainerDoSGuard();
     InstallIDocumentReloadLeakFix();
     InstallXmlOverReadGuard();
+   // y el heapfixes me dio crash
     StartHeapFixes(1, 1, 0);
     StartGameEnhancements();
+    //actor crash
     StartNewActorState();
-    LoadLibraryA("inflar.dll");
     return 0;
 }
 

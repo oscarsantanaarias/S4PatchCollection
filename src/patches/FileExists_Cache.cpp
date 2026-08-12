@@ -15,20 +15,6 @@ namespace
     volatile LONG g_served = 0;
     volatile LONG g_disk   = 0;
 
-    void DumpStats()
-    {
-        char buf[128];
-        wsprintfA(buf, "served_from_cache=%ld  disk_calls=%ld\r\n", g_served, g_disk);
-        HANDLE h = CreateFileA("fileexists_cache_stats.txt", GENERIC_WRITE, FILE_SHARE_READ,
-                               nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (h != INVALID_HANDLE_VALUE)
-        {
-            DWORD w;
-            WriteFile(h, buf, lstrlenA(buf), &w, nullptr);
-            CloseHandle(h);
-        }
-    }
-
     bool IsReadOnlyResource(const char* p)
     {
         return (p[0] == 'R' || p[0] == 'r') &&
@@ -47,8 +33,7 @@ namespace
         ReleaseSRWLockShared(&g_lock);
         if (found)
         {
-            if ((InterlockedIncrement(&g_served) & 0x1FFF) == 0)
-                DumpStats();
+            InterlockedIncrement(&g_served);
             return cached;
         }
 

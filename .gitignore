@@ -369,3 +369,6 @@ MigrationBackup/
 FodyWeavers.xsd
 
 .
+*.bak
+S10 report.txt
+src/DX11 Files/

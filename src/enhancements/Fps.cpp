@@ -7,6 +7,14 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
+// keep it cached, GetModuleHandleW hits the loader lock and S4 runs inside the hooks
+static uintptr_t g_s4_base = 0;
+static uintptr_t s4_base() {
+    if (!g_s4_base) g_s4_base = (uintptr_t)GetModuleHandleW(NULL);
+    return g_s4_base;
+}
+#define S4(va) (s4_base() + ((va) - 0x00E80000u))
+
 
 #pragma comment(lib, "detours.lib")
 #pragma intrinsic(_ReturnAddress)
@@ -60,7 +68,7 @@ struct game_context {
 };
 
 typedef game_context* (__cdecl* fetch_game_context_t)(void);
-static fetch_game_context_t fetch_game_context = (fetch_game_context_t)0x00f2eac0;
+static fetch_game_context_t fetch_game_context = (fetch_game_context_t)S4(0x00f2eac0);
 
 typedef void(__thiscall* game_tick_t)(void*);
 typedef void(__thiscall* move_actor_by_t)(void*, float, float, float);
@@ -98,7 +106,7 @@ struct ctx_fun_005e4020 {
 
 static actor_ctx* fetch_actor_ctx() {
     typedef actor_ctx* (__cdecl* fetch_ctx_t)(void);
-    static fetch_ctx_t fetch_ctx = (fetch_ctx_t)0x00f2efd0;
+    static fetch_ctx_t fetch_ctx = (fetch_ctx_t)S4(0x00f2efd0);
     return fetch_ctx();
 }
 
@@ -125,7 +133,7 @@ static void __fastcall patched_fun_005e4020(void* ecx, void* edx, uint32_t param
     float drop_diff = drop_val + 50000.0f;
     if (drop_diff < 0.0f) drop_diff = -drop_diff;
 
-    if (_ReturnAddress() == (void*)0x00fa6c8e || drop_diff < 1.0f)
+    if (_ReturnAddress() == (void*)S4(0x00fa6c8e) || drop_diff < 1.0f)
         set_drop_val = drop_val;
 }
 
@@ -188,7 +196,7 @@ static void __fastcall patched_move_actor_by(void* ecx, void* edx, float deltaX,
 
     void* caller = _ReturnAddress();
 
-    if (caller == (void*)0x00faed67) {
+    if (caller == (void*)S4(0x00faed67)) {
         bool airborne = false;
         bool wasFlyingBefore = wasAirborne;
         bool flyEvade = (ctx->actor_state == 0x0B || ctx->actor_state == 0x0C) && wasFlyingBefore;
@@ -339,7 +347,7 @@ static void __fastcall patched_game_tick(void* ecx, void* edx)
 }
 
 static void hook_move_actor_by() {
-    orig_move_actor_by = (move_actor_by_t)0x00fa3960;
+    orig_move_actor_by = (move_actor_by_t)S4(0x00fa3960);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)orig_move_actor_by, (PVOID)patched_move_actor_by);
@@ -347,7 +355,7 @@ static void hook_move_actor_by() {
 }
 
 static void hook_game_tick() {
-    orig_game_tick = (game_tick_t)0x0131f360;
+    orig_game_tick = (game_tick_t)S4(0x0131f360);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)orig_game_tick, (PVOID)patched_game_tick);
@@ -355,7 +363,7 @@ static void hook_game_tick() {
 }
 
 static void hook_fun_005e4020() {
-    orig_fun_005e4020 = (fun_005e4020_t)0x010730e0;
+    orig_fun_005e4020 = (fun_005e4020_t)S4(0x010730e0);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)orig_fun_005e4020, (PVOID)patched_fun_005e4020);
@@ -363,7 +371,7 @@ static void hook_fun_005e4020() {
 }
 
 static void hook_fov_update() {
-    orig_fov_update = (fov_consumer_t)0x01202ad0;
+    orig_fov_update = (fov_consumer_t)S4(0x01202ad0);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)orig_fov_update, (PVOID)patched_fov_update);
@@ -371,7 +379,7 @@ static void hook_fov_update() {
 }
 
 static void hook_calculate_weapon_spread() {
-    orig_calculate_weapon_spread = (calc_spread_t)0x0101a210;
+    orig_calculate_weapon_spread = (calc_spread_t)S4(0x0101a210);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)orig_calculate_weapon_spread, (PVOID)patched_calculate_weapon_spread);
@@ -379,7 +387,7 @@ static void hook_calculate_weapon_spread() {
 }
 
 void patch_min_frametime(double min_frametime) {
-    double* min_frametime_const = (double*)0x01f4ebd8;
+    double* min_frametime_const = (double*)S4(0x01f4ebd8);
     DWORD oldProtect;
     VirtualProtect(min_frametime_const, sizeof(double), PAGE_EXECUTE_READWRITE, &oldProtect);
     *min_frametime_const = min_frametime;
@@ -391,15 +399,15 @@ static void redirect_speed_dampeners() {
     for (int i = 0; i < 9; i++)
         memcpy(&speed_dampeners[i], value, sizeof(value));
     uint32_t* patch_location = nullptr;
-    patch_location = (uint32_t*)0x00fed93e; *patch_location = (uint32_t)&speed_dampeners[0];
-    patch_location = (uint32_t*)0x0125145d; *patch_location = (uint32_t)&speed_dampeners[1];
-    patch_location = (uint32_t*)0x012514ca; *patch_location = (uint32_t)&speed_dampeners[2];
-    patch_location = (uint32_t*)0x01252024; *patch_location = (uint32_t)&speed_dampeners[3];
-    patch_location = (uint32_t*)0x0125202c; *patch_location = (uint32_t)&speed_dampeners[4];
-    patch_location = (uint32_t*)0x01252793; *patch_location = (uint32_t)&speed_dampeners[5];
-    patch_location = (uint32_t*)0x012527c9; *patch_location = (uint32_t)&speed_dampeners[6];
-    patch_location = (uint32_t*)0x01252cfc; *patch_location = (uint32_t)&speed_dampeners[7];
-    patch_location = (uint32_t*)0x01253183; *patch_location = (uint32_t)&speed_dampeners[8];
+    patch_location = (uint32_t*)S4(0x00fed93e); *patch_location = (uint32_t)&speed_dampeners[0];
+    patch_location = (uint32_t*)S4(0x0125145d); *patch_location = (uint32_t)&speed_dampeners[1];
+    patch_location = (uint32_t*)S4(0x012514ca); *patch_location = (uint32_t)&speed_dampeners[2];
+    patch_location = (uint32_t*)S4(0x01252024); *patch_location = (uint32_t)&speed_dampeners[3];
+    patch_location = (uint32_t*)S4(0x0125202c); *patch_location = (uint32_t)&speed_dampeners[4];
+    patch_location = (uint32_t*)S4(0x01252793); *patch_location = (uint32_t)&speed_dampeners[5];
+    patch_location = (uint32_t*)S4(0x012527c9); *patch_location = (uint32_t)&speed_dampeners[6];
+    patch_location = (uint32_t*)S4(0x01252cfc); *patch_location = (uint32_t)&speed_dampeners[7];
+    patch_location = (uint32_t*)S4(0x01253183); *patch_location = (uint32_t)&speed_dampeners[8];
 }
 
 static void prepare_nt_timer() {

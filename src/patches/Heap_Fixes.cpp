@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <detours.h>
 #include <cstdio>
+#include "../s4_base.h"
 #pragma comment(lib, "detours.lib")
 
 static const DWORD CPP_EXC = 0xE06D7363;
@@ -20,16 +21,10 @@ static void SweepHeapsLFH(bool first) {
     if (!heaps) return;
     DWORD got = GetProcessHeaps(n, heaps);
     for (DWORD i = 0; i < got; i++) {
-        bool isNew = !AlreadyKnown(heaps[i]);
+        AlreadyKnown(heaps[i]);
         ULONG info = 0; SIZE_T ret = 0;
         ULONG before = HeapQueryInformation(heaps[i], HeapCompatibilityInformation, &info, sizeof(info), &ret) ? info : (ULONG)-1;
         if (before != 2) { ULONG lfh = 2; HeapSetInformation(heaps[i], HeapCompatibilityInformation, &lfh, sizeof(lfh)); }
-        if (isNew) {
-            ULONG after = 0; HeapQueryInformation(heaps[i], HeapCompatibilityInformation, &after, sizeof(after), &ret);
-            FILE* f = fopen("C:\\S4Client\\heap_fixes.txt", "a");
-            if (f) { fprintf(f, "[lfh] heap %p antes=%lu despues=%lu %s\n", heaps[i], before, after,
-                             before == 2 ? "(ya LFH)" : (after == 2 ? "-> PRENDIDO" : "no se pudo")); fclose(f); }
-        }
     }
     HeapFree(GetProcessHeap(), 0, heaps);
     (void)first;
@@ -51,25 +46,25 @@ typedef void* (__fastcall* tA)(void*, void*, int);
       return 0;                                                                       \
     }                                                                                 \
   }
-HOOK_A(Alloc,      0x01AE4910)
-HOOK_A(f00f391d0,  0x00F391D0)
-HOOK_A(f014cb7d0,  0x014CB7D0)
-HOOK_A(f01a84f10,  0x01A84F10)
-HOOK_A(f01a85270,  0x01A85270)
-HOOK_A(f01a85570,  0x01A85570)
-HOOK_A(f01ac2690,  0x01AC2690)
-HOOK_A(f01adfbe0,  0x01ADFBE0)
-HOOK_A(f01adfd20,  0x01ADFD20)
-HOOK_A(f01adfeb0,  0x01ADFEB0)
-HOOK_A(f01ae87c0,  0x01AE87C0)
-HOOK_A(f01af0740,  0x01AF0740)
-HOOK_A(f01af5400,  0x01AF5400)
-HOOK_A(f01affda0,  0x01AFFDA0)
-HOOK_A(f01affeb0,  0x01AFFEB0)
-HOOK_A(f01b0e0a0,  0x01B0E0A0)
-HOOK_A(f01c7ee60,  0x01C7EE60)
+HOOK_A(Alloc,      S4(0x01AE4910))
+HOOK_A(f00f391d0,  S4(0x00F391D0))
+HOOK_A(f014cb7d0,  S4(0x014CB7D0))
+HOOK_A(f01a84f10,  S4(0x01A84F10))
+HOOK_A(f01a85270,  S4(0x01A85270))
+HOOK_A(f01a85570,  S4(0x01A85570))
+HOOK_A(f01ac2690,  S4(0x01AC2690))
+HOOK_A(f01adfbe0,  S4(0x01ADFBE0))
+HOOK_A(f01adfd20,  S4(0x01ADFD20))
+HOOK_A(f01adfeb0,  S4(0x01ADFEB0))
+HOOK_A(f01ae87c0,  S4(0x01AE87C0))
+HOOK_A(f01af0740,  S4(0x01AF0740))
+HOOK_A(f01af5400,  S4(0x01AF5400))
+HOOK_A(f01affda0,  S4(0x01AFFDA0))
+HOOK_A(f01affeb0,  S4(0x01AFFEB0))
+HOOK_A(f01b0e0a0,  S4(0x01B0E0A0))
+HOOK_A(f01c7ee60,  S4(0x01C7EE60))
 typedef void* (__fastcall* tB)(void*, void*, void*, unsigned);
-static tB o_f01ae4dd0 = (tB)0x01AE4DD0;
+static tB o_f01ae4dd0 = (tB)S4(0x01AE4DD0);
 static void* __fastcall h_f01ae4dd0(void* ecx, void* edx, void* a1, unsigned a2) {
     __try { return o_f01ae4dd0(ecx, edx, a1, a2); }
     __except (GetExceptionCode() == CPP_EXC ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
@@ -78,7 +73,7 @@ static void* __fastcall h_f01ae4dd0(void* ecx, void* edx, void* a1, unsigned a2)
     }
 }
 
-static tA o_f01b0daf0 = (tA)0x01B0DAF0;
+static tA o_f01b0daf0 = (tA)S4(0x01B0DAF0);
 static void* __fastcall h_f01b0daf0(void* ecx, void* edx, int a1) {
     if ((unsigned)a1 > 0x100000u) {
         InterlockedIncrement(&g_caught);
@@ -104,17 +99,17 @@ typedef unsigned(__cdecl* tC)(int);
       OutputDebugStringA("[oom] " #NAME " (bad_alloc) fail-soft -> NULL\r\n"); return 0; \
     }                                                                                 \
   }
-HOOK_C(c017bb8e0, 0x017BB8E0) HOOK_C(c00fba260, 0x00FBA260) HOOK_C(c012ba620, 0x012BA620)
-HOOK_C(c0127d780, 0x0127D780) HOOK_C(c010bccb0, 0x010BCCB0) HOOK_C(c01bf3af0, 0x01BF3AF0)
-HOOK_C(c015f2350, 0x015F2350) HOOK_C(c01ba9980, 0x01BA9980) HOOK_C(c01129130, 0x01129130)
-HOOK_C(c01129200, 0x01129200) HOOK_C(c01be82a0, 0x01BE82A0) HOOK_C(c01b6ec50, 0x01B6EC50)
-HOOK_C(c011e0700, 0x011E0700) HOOK_C(c012243b0, 0x012243B0) HOOK_C(c01c1bf60, 0x01C1BF60)
-HOOK_C(c01b98890, 0x01B98890) HOOK_C(c01c1c140, 0x01C1C140) HOOK_C(c01c1c050, 0x01C1C050)
-HOOK_C(c013d1fc0, 0x013D1FC0) HOOK_C(c01bd7c00, 0x01BD7C00) HOOK_C(c00f57180, 0x00F57180)
-HOOK_C(c018972d0, 0x018972D0) HOOK_C(c01815f00, 0x01815F00) HOOK_C(c01a8a670, 0x01A8A670)
-HOOK_C(c015cfef0, 0x015CFEF0) HOOK_C(c01bc3b80, 0x01BC3B80) HOOK_C(c01642bb0, 0x01642BB0)
-HOOK_C(c01642ae0, 0x01642AE0) HOOK_C(c013c2750, 0x013C2750) HOOK_C(c011c1f70, 0x011C1F70)
-HOOK_C(c01906dd0, 0x01906DD0) HOOK_C(c011c6e50, 0x011C6E50)
+HOOK_C(c017bb8e0, S4(0x017BB8E0)) HOOK_C(c00fba260, S4(0x00FBA260)) HOOK_C(c012ba620, S4(0x012BA620))
+HOOK_C(c0127d780, S4(0x0127D780)) HOOK_C(c010bccb0, S4(0x010BCCB0)) HOOK_C(c01bf3af0, S4(0x01BF3AF0))
+HOOK_C(c015f2350, S4(0x015F2350)) HOOK_C(c01ba9980, S4(0x01BA9980)) HOOK_C(c01129130, S4(0x01129130))
+HOOK_C(c01129200, S4(0x01129200)) HOOK_C(c01be82a0, S4(0x01BE82A0)) HOOK_C(c01b6ec50, S4(0x01B6EC50))
+HOOK_C(c011e0700, S4(0x011E0700)) HOOK_C(c012243b0, S4(0x012243B0)) HOOK_C(c01c1bf60, S4(0x01C1BF60))
+HOOK_C(c01b98890, S4(0x01B98890)) HOOK_C(c01c1c140, S4(0x01C1C140)) HOOK_C(c01c1c050, S4(0x01C1C050))
+HOOK_C(c013d1fc0, S4(0x013D1FC0)) HOOK_C(c01bd7c00, S4(0x01BD7C00)) HOOK_C(c00f57180, S4(0x00F57180))
+HOOK_C(c018972d0, S4(0x018972D0)) HOOK_C(c01815f00, S4(0x01815F00)) HOOK_C(c01a8a670, S4(0x01A8A670))
+HOOK_C(c015cfef0, S4(0x015CFEF0)) HOOK_C(c01bc3b80, S4(0x01BC3B80)) HOOK_C(c01642bb0, S4(0x01642BB0))
+HOOK_C(c01642ae0, S4(0x01642AE0)) HOOK_C(c013c2750, S4(0x013C2750)) HOOK_C(c011c1f70, S4(0x011C1F70))
+HOOK_C(c01906dd0, S4(0x01906DD0)) HOOK_C(c011c6e50, S4(0x011C6E50))
 
 extern "C" void StartHeapFixes(int lfh, int failsoft19, int badAlloc32) {
     if (lfh) CreateThread(0, 0, LfhThread, 0, 0, 0);
@@ -163,10 +158,7 @@ extern "C" void StartHeapFixes(int lfh, int failsoft19, int badAlloc32) {
         DetourAttach(&(PVOID&)o_c01906dd0, h_c01906dd0); DetourAttach(&(PVOID&)o_c011c6e50, h_c011c6e50);
     }
 
-    LONG ec = DetourTransactionCommit();
-    FILE* f = fopen("C:\\S4Client\\heap_fixes.txt", "a");
-    if (f) { fprintf(f, "[heap_fixes] lfh=%d failsoft19=%d badAlloc32=%d Commit=%ld (0=OK)\n",
-                     lfh, failsoft19, badAlloc32, ec); fclose(f); }
+    DetourTransactionCommit();
 }
 
 extern "C" void StopHeapFixes() { }

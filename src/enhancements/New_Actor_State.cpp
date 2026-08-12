@@ -4,17 +4,18 @@
 #include <detours.h>
 #include <cstdint>
 #include <cstring>
+#include "../s4_base.h"
 
 #pragma comment(lib, "detours.lib")
 
 typedef int(__fastcall* get_current_state_id_t)(int);
-static get_current_state_id_t orig_get_current_state_id = (get_current_state_id_t)0x00F8A130;
+static get_current_state_id_t orig_get_current_state_id = (get_current_state_id_t)S4(0x00F8A130);
 
 typedef void* (__thiscall* get_state_t)(void*, int);
-static get_state_t orig_get_state = (get_state_t)0x00F8A1C0;
+static get_state_t orig_get_state = (get_state_t)S4(0x00F8A1C0);
 
 typedef void(__thiscall* set_current_state_t)(void*, void*);
-static set_current_state_t orig_set_current_state = (set_current_state_t)0x00F8A0B0;
+static set_current_state_t orig_set_current_state = (set_current_state_t)S4(0x00F8A0B0);
 
 static const size_t k_clone_size = 0x100;
 static void* g_current_manager = nullptr;
