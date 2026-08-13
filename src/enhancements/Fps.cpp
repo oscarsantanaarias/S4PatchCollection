@@ -26,10 +26,11 @@ static NtDelayExecution_t       pNtDelayExecution = nullptr;
 static NtQueryTimerResolution_t pNtQueryTimerResolution = nullptr;
 static NtSetTimerResolution_t   pNtSetTimerResolution = nullptr;
 
-static int max_framerate = 144;
-static int field_of_view = 90;
-static int center_field_of_view = 100;
-static int sprint_field_of_view = 110;
+// not static: the overlay drives these live, see overlay/Overlay.cpp
+int max_framerate = 144;
+int field_of_view = 90;
+int center_field_of_view = 100;
+int sprint_field_of_view = 110;
 
 float normal_jump_height_multiplier = 0.953f;
 float flight_multiplier = 1.0f;
@@ -49,6 +50,16 @@ static float ReadConfigFloat(const char* section, const char* key, float fallbac
     if (value[0] == '\0')
         return fallback;
     return strtof(value, nullptr);
+}
+
+void patch_min_frametime(double min_frametime);
+
+// the overlay calls this after moving the fps slider. FOV is read every frame so
+// it needs nothing, but the frame limiter is patched into memory once.
+void ApplyFrameRate()
+{
+    if (max_framerate > 0)
+        patch_min_frametime(1.0 / max_framerate);
 }
 
 static void LoadConfig()
@@ -142,10 +153,31 @@ static void __fastcall patched_fun_005e4020(void* ecx, void* edx, uint32_t param
 static void __fastcall patched_fov_update(void* ecx, void*, uint32_t a1, uint32_t a2)
 {
     float* target_fov = (float*)((char*)ecx + 0x158);
+    const float orig = *target_fov;
+
+    // TEMPORARY: 60/66/80 come from a different build. Print every distinct value this
+    // one actually writes so we can see what sprint uses. Watch with DebugView, then
+    // delete this block.
+    {
+        static float seen = -1.0f;
+        if (orig != seen) {
+            seen = orig;
+            char msg[64];
+            wsprintfA(msg, "[fov] 0x158 = %d\r\n", (int)orig);
+            OutputDebugStringA(msg);
+        }
+    }
+
     if (*target_fov == 60.0f)       *target_fov = static_cast<float>(field_of_view);
     else if (*target_fov == 66.0f)  *target_fov = static_cast<float>(center_field_of_view);
     else if (*target_fov == 80.0f)  *target_fov = static_cast<float>(sprint_field_of_view);
+
     orig_fov_update(ecx, a1, a2);
+
+    // Put the game's own value back. Leaving ours in place means the state machine
+    // never writes 60/66/80 again, so after the first pass nothing else ever matches
+    // and sprint in particular never gets its value.
+    *target_fov = orig;
 }
 
 // FUN_0101a210: weapon spread frame-independiente. spread_type==2 reescala el "change"
@@ -263,31 +295,11 @@ static void __fastcall patched_move_actor_by(void* ecx, void* edx, float deltaX,
     orig_move_actor_by(ecx, deltaX, adjustedY, deltaZ);
 }
 
-static void PollFovKeys()
-{
-    static bool lastPlus = false, lastMinus = false;
-    bool plus  = (GetAsyncKeyState(VK_OEM_PLUS) & 0x8000) || (GetAsyncKeyState(VK_ADD) & 0x8000);
-    bool minus = (GetAsyncKeyState(VK_OEM_MINUS) & 0x8000) || (GetAsyncKeyState(VK_SUBTRACT) & 0x8000);
-    int delta = 0;
-    if (plus && !lastPlus)   delta = 1;
-    if (minus && !lastMinus) delta = -1;
-    lastPlus = plus;
-    lastMinus = minus;
-    if (delta) {
-        field_of_view += delta;
-        if (field_of_view < 50)  field_of_view = 50;
-        if (field_of_view > 120) field_of_view = 120;
-        center_field_of_view = field_of_view;
-        sprint_field_of_view = field_of_view + 10;
-    }
-}
-
 static void __fastcall patched_game_tick(void* ecx, void* edx)
 {
     game_context* ctx = fetch_game_context();
     if (!ctx) return;
 
-    PollFovKeys();
 
     bool should_limit = ctx->fps_limiter_toggle != 0;
 

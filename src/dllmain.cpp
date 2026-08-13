@@ -19,6 +19,7 @@ void InstallIDocumentReloadLeakFix();
 void InstallXmlOverReadGuard();
 void InstallBattlEyeBypass();
 void StartGameEnhancements();
+void StartOverlay();
 void StartNewActorState();
 extern "C" void StartHeapFixes(int lfh, int failsoft19, int badAlloc32);
 
@@ -58,6 +59,7 @@ static DWORD WINAPI InitThread(LPVOID)
     StartGameEnhancements();
     //actor crash
     StartNewActorState();
+    StartOverlay();
     return 0;
 }
 

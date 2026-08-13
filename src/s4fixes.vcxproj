@@ -50,7 +50,7 @@
     <TargetExt>.asi</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <OutDir>..\..\Users\sneo\Desktop\S4 Seasons client\S4 Clients\S4League %2816.11.2017 by HellaHell%29\S4League</OutDir>
     <TargetName>sneoz</TargetName>
     <TargetExt>.asi</TargetExt>
   </PropertyGroup>
@@ -113,6 +113,13 @@
     <ClCompile Include="patches\XmlOverRead_Guard.cpp" />
     <ClCompile Include="patches\BattlEye_Bypass.cpp" />
     <ClCompile Include="patches\Heap_Fixes.cpp" />
+    <ClCompile Include="overlay\Overlay.cpp" />
+    <ClCompile Include="overlay\imgui\imgui.cpp" />
+    <ClCompile Include="overlay\imgui\imgui_draw.cpp" />
+    <ClCompile Include="overlay\imgui\imgui_tables.cpp" />
+    <ClCompile Include="overlay\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="overlay\imgui\imgui_impl_dx9.cpp" />
+    <ClCompile Include="overlay\imgui\imgui_impl_win32.cpp" />
     <ClCompile Include="enhancements\Fps.cpp" />
     <ClCompile Include="enhancements\New_Actor_State.cpp" />
   </ItemGroup>
