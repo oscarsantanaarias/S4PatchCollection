@@ -34,8 +34,9 @@ stays out of the repo. The copy is skipped, not failed, when the file is in use.
 ## Overlay
 
 `INSERT` toggles the panel, off by default. Framerate cap, field of view and the
-physics rate, all applied live, plus the current actor state. It's drawn by
-hooking the device vtable, `EndScene` for the frame and `Reset` for resolution
+physics rate, all applied live, plus the current actor state. Settings persist to
+`conf.json`, written with defaults on first run, and saved again when the panel
+closes so the hotkeys make it in too. It's drawn by hooking the device vtable, `EndScene` for the frame and `Reset` for resolution
 changes. The subclassed `WndProc` only forwards input while the panel is open, so
 the game keeps keyboard and mouse the rest of the time.
 

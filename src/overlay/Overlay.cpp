@@ -1,7 +1,11 @@
+#define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d9.h>
 #include <detours.h>
+#include <cstdio>
+#include <cstdlib>
+#include <string>
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_dx9.h"
@@ -23,6 +27,52 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
 
 namespace
 {
+    const char* CONF = "conf.json";
+
+    // A mano en vez de traer json.hpp: son cuatro numeros en un objeto plano. Si algun
+    // dia hay algo anidado, ahi si vale la dependencia.
+    int ReadInt(const std::string& doc, const char* key, int fallback)
+    {
+        const std::string needle = std::string("\"") + key + "\"";
+        size_t k = doc.find(needle);
+        if (k == std::string::npos) return fallback;
+        k = doc.find(':', k + needle.size());
+        if (k == std::string::npos) return fallback;
+        return atoi(doc.c_str() + k + 1);
+    }
+
+    void Save()
+    {
+        FILE* f = fopen(CONF, "w");
+        if (!f) return;
+        fprintf(f,
+            "{\n"
+            "  \"max_framerate\": %d,\n"
+            "  \"field_of_view\": %d,\n"
+            "  \"physics_hz\": %d,\n"
+            "  \"fps_unlocked\": %d\n"
+            "}\n",
+            max_framerate, (int)field_of_view, (int)physics_hz, fps_unlocked ? 1 : 0);
+        fclose(f);
+    }
+
+    void Load()
+    {
+        FILE* f = fopen(CONF, "rb");
+        if (!f) { Save(); return; }          // primera vez: se escriben los defaults
+        std::string doc;
+        char buf[512];
+        size_t n;
+        while ((n = fread(buf, 1, sizeof(buf), f)) > 0) doc.append(buf, n);
+        fclose(f);
+
+        max_framerate = ReadInt(doc, "max_framerate", max_framerate);
+        field_of_view = (float)ReadInt(doc, "field_of_view", (int)field_of_view);
+        physics_hz    = (float)ReadInt(doc, "physics_hz", (int)physics_hz);
+        fps_unlocked  = ReadInt(doc, "fps_unlocked", fps_unlocked ? 1 : 0) != 0;
+        applied_fov   = field_of_view;       // sin rampa al arrancar
+    }
+
     // No se busca la ventana por clase ni por titulo, eso cambia entre builds. Estamos
     // dentro del proceso, asi que alcanza con tomar nuestra propia ventana visible.
     BOOL CALLBACK PickWindow(HWND h, LPARAM out)
@@ -139,9 +189,11 @@ namespace
             ImGui::Separator();
             ImGui::Spacing();
 
+            bool dirty = false;
+
             Heading("FRAMERATE");
-            Stepper("fps", &max_framerate, 30, 1000, "%d FPS");
-            ImGui::Checkbox("F5  quitar el cap", &fps_unlocked);
+            if (Stepper("fps", &max_framerate, 30, 1000, "%d FPS")) dirty = true;
+            if (ImGui::Checkbox("F5  quitar el cap", &fps_unlocked)) dirty = true;
 
             ImGui::Spacing();
             Heading("FIELD OF VIEW");
@@ -149,15 +201,13 @@ namespace
             // El hook de la matriz aplica un offset sobre el FOV del juego, asi que el
             // +20 del sprint y su transicion suave se conservan.
             int fov = (int)field_of_view;
-            if (Stepper("fov", &fov, 41, 99, "%d deg"))
-                field_of_view = (float)fov;
+            if (Stepper("fov", &fov, 41, 99, "%d deg")) { field_of_view = (float)fov; dirty = true; }
             ImGui::TextDisabled("aplicado %.1f   (PgUp / PgDn)", applied_fov);
 
             ImGui::Spacing();
             Heading("PHYSICS");
             int hz = (int)physics_hz;
-            if (Stepper("hz", &hz, 30, 240, "%d Hz"))
-                physics_hz = (float)hz;
+            if (Stepper("hz", &hz, 30, 240, "%d Hz")) { physics_hz = (float)hz; dirty = true; }
             ImGui::TextDisabled("actor state %u", ActorState());
 
             ImGui::Spacing();
@@ -165,6 +215,8 @@ namespace
             ImGui::PushStyleColor(ImGuiCol_Text, ACCENT_DIM);
             ImGui::TextUnformatted("INSERT  cerrar");
             ImGui::PopStyleColor();
+
+            if (dirty) Save();
         }
         ImGui::End();
     }
@@ -189,12 +241,17 @@ namespace
             ImGui_ImplWin32_Init(g_window);
             ImGui_ImplDX9_Init(dev);
             oWndProc = (WNDPROC)SetWindowLongPtr(g_window, GWLP_WNDPROC, (LONG_PTR)WndProc);
+            Load();
             g_ready = true;
         }
 
         static bool wasDown = false;
         const bool down = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
-        if (down && !wasDown) g_show = !g_show;
+        if (down && !wasDown)
+        {
+            g_show = !g_show;
+            if (!g_show) Save();          // al cerrar, para que las hotkeys tambien queden
+        }
         wasDown = down;
 
         if (!g_show) return oEndScene(dev);   // nada que dibujar, no molestamos
