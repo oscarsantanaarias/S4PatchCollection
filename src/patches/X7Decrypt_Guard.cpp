@@ -2,27 +2,29 @@
 #include <windows.h>
 #include <intrin.h>
 #include "detours.h"
+#include "../s4_base.h"
 
 namespace
 {
     const DWORD CPP_EXC = 0xE06D7363;
-    const uintptr_t DECRYPT_X7   = 0x01B42C50; // parse driver (this func)
-    const uintptr_t FILE_LOAD    = 0x01B79480; // loader -> file object (EAX)
-    const uintptr_t FILE_RELEASE = 0x01B79FB0; // release(mgr, obj) __thiscall
-    const uintptr_t GET_MGR      = 0x01C7EE50; // -> file manager
-    // Return addr del CALL a FUN_01b42c50 dentro de FUN_01d11310 (CALL E8 en
-    // 0x01d113e4 -> retorna a 0x01d113e9). Gate para el fix B (leak solo de ese caller).
-    const void*     D11310_SITE  = (const void*)0x01D113E9;
+    const uintptr_t DECRYPT_X7   = 0x01003D70; // parse driver
+    const uintptr_t FILE_LOAD    = 0x01036C00; // loader -> file object (EAX)
+    const uintptr_t FILE_RELEASE = 0x010375B0; // release(mgr, obj) __thiscall
+    const uintptr_t GET_MGR      = 0x0112A200; // -> file manager
+    // Return addr del CALL a DECRYPT_X7: gate del fix B, para liberar solo cuando el
+    // parse fallo viniendo de ese caller.
+    const uintptr_t D11310_RET   = 0x011BA519;
+    const void*     D11310_SITE  = nullptr;
 
     typedef char(__fastcall* tDecrypt)(void*, void*, char*, char*, size_t, int);
     typedef void*(__fastcall* tFileLoad)(void*, void*, char*, char, char);
     typedef void(__fastcall* tFileRelease)(void*, void*, void*);
     typedef void*(__cdecl* tGetMgr)(void);
 
-    tDecrypt     oDecrypt     = (tDecrypt)DECRYPT_X7;
-    tFileLoad    oFileLoad    = (tFileLoad)FILE_LOAD;
-    tFileRelease oFileRelease = (tFileRelease)FILE_RELEASE;
-    tGetMgr      oGetMgr      = (tGetMgr)GET_MGR;
+    tDecrypt     oDecrypt     = nullptr;
+    tFileLoad    oFileLoad    = nullptr;
+    tFileRelease oFileRelease = nullptr;
+    tGetMgr      oGetMgr      = nullptr;
 
     // Fix B: el file object que FUN_01d11310 carga (FUN_01b79480) se libera SOLO en
     // el success path; si el parse falla, se leakea. Capturamos el ultimo file object
@@ -68,6 +70,12 @@ namespace
 
 void InstallX7DecryptGuard()
 {
+    oDecrypt     = (tDecrypt)S4(DECRYPT_X7);
+    oFileLoad    = (tFileLoad)S4(FILE_LOAD);
+    oFileRelease = (tFileRelease)S4(FILE_RELEASE);
+    oGetMgr      = (tGetMgr)S4(GET_MGR);
+    D11310_SITE  = (const void*)S4(D11310_RET);
+
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)oDecrypt, hkDecrypt);

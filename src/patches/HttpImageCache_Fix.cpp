@@ -1,15 +1,18 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <cstdint>
+#include "../s4_base.h"
 
 namespace
 {
-    const uintptr_t INSERT_FN    = 0x0142CA80;
-    const uintptr_t CALL_SITE    = 0x0142C776;
+    // El cache de texturas HTTP crece sin tope: cada una entra y ninguna se saca. Se
+    // corta en CACHE_CAP devolviendo un iterador nulo desde el insert del map.
+    const uintptr_t INSERT_FN    = 0x006C0D30;
+    const uintptr_t CALL_SITE    = 0x0097B866;
     const long      CACHE_CAP    = 1024;
 
     typedef void* (__fastcall* tInsert)(void* thisMap, void* edx, void* out, int a2, void* a3, void* a4);
-    tInsert oInsert = (tInsert)INSERT_FN;
+    tInsert oInsert = nullptr;
     volatile long g_count = 0;
 
     void* __fastcall guardInsert(void* thisMap, void* edx, void* out, int a2, void* a3, void* a4)
@@ -40,5 +43,6 @@ namespace
 
 void InstallHttpImageCacheFix()
 {
-    RepointCall(CALL_SITE, (void*)guardInsert);
+    oInsert = (tInsert)S4(INSERT_FN);
+    RepointCall(S4(CALL_SITE), (void*)guardInsert);
 }

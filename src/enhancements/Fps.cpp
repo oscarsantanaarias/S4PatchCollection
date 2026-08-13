@@ -7,6 +7,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
+#include "../s4_base.h"
 
 #pragma comment(lib, "detours.lib")
 #pragma intrinsic(_ReturnAddress)
@@ -18,10 +19,11 @@ static NtDelayExecution_t       pNtDelayExecution = nullptr;
 static NtQueryTimerResolution_t pNtQueryTimerResolution = nullptr;
 static NtSetTimerResolution_t   pNtSetTimerResolution = nullptr;
 
-static int max_framerate = 144;
-static int field_of_view = 90;
-static int center_field_of_view = 100;
-static int sprint_field_of_view = 110;
+// not static: the overlay drives these live, see overlay/Overlay.cpp
+int max_framerate = 144;
+int field_of_view = 90;
+int center_field_of_view = 100;
+int sprint_field_of_view = 110;
 
 float normal_jump_height_multiplier = 0.953f;
 float flight_multiplier = 1.0f;
@@ -43,6 +45,16 @@ static float ReadConfigFloat(const char* section, const char* key, float fallbac
     return strtof(value, nullptr);
 }
 
+void patch_min_frametime(double min_frametime);
+
+// the overlay calls this after moving the fps slider. FOV is read every frame so
+// it needs nothing, but the frame limiter is patched into memory once.
+void ApplyFrameRate()
+{
+    if (max_framerate > 0)
+        patch_min_frametime(1.0 / max_framerate);
+}
+
 static void LoadConfig()
 {
     max_framerate = GetPrivateProfileIntA("fps", "max_framerate", max_framerate, configPath);
@@ -60,7 +72,7 @@ struct game_context {
 };
 
 typedef game_context* (__cdecl* fetch_game_context_t)(void);
-static fetch_game_context_t fetch_game_context = (fetch_game_context_t)0x00f2eac0;
+static fetch_game_context_t fetch_game_context = (fetch_game_context_t)S4(0x004ad790);
 
 typedef void(__thiscall* game_tick_t)(void*);
 typedef void(__thiscall* move_actor_by_t)(void*, float, float, float);
@@ -84,7 +96,7 @@ static void set_funny_value(funny_value* x, uint32_t* value) {
 void patch_min_frametime(double min_frametime);
 
 struct actor_ctx {
-    uint8_t unknown[0xec];
+    uint8_t unknown[0xb0];
     uint8_t actor_state;
     uint8_t unknown_2[0x3];
     uint32_t actor_substate_1;
@@ -98,7 +110,7 @@ struct ctx_fun_005e4020 {
 
 static actor_ctx* fetch_actor_ctx() {
     typedef actor_ctx* (__cdecl* fetch_ctx_t)(void);
-    static fetch_ctx_t fetch_ctx = (fetch_ctx_t)0x00f2efd0;
+    static fetch_ctx_t fetch_ctx = (fetch_ctx_t)S4(0x004ae0a0);
     return fetch_ctx();
 }
 
@@ -125,23 +137,31 @@ static void __fastcall patched_fun_005e4020(void* ecx, void* edx, uint32_t param
     float drop_diff = drop_val + 50000.0f;
     if (drop_diff < 0.0f) drop_diff = -drop_diff;
 
-    if (_ReturnAddress() == (void*)0x00fa6c8e || drop_diff < 1.0f)
+    // -50000 es el valor de drop que identifica la PS.
+    if (drop_diff < 1.0f)
         set_drop_val = drop_val;
 }
 
-// FUN_01202ad0: RET 8 = 2 args. this+0x158 = target_fov (60 default / 66 center / 80 sprint).
-// Sin restore: dejamos 0x158=custom fijo (restaurar dejaba un delta que corria la camara de lado).
+// this+0x158 = target_fov (60 normal / 66 center / 80 sprint). Se restaura el valor del
+// juego al salir: si dejamos el nuestro, la maquina de estados no vuelve a escribir
+// 60/66/80 y el sprint se queda sin su valor.
 static void __fastcall patched_fov_update(void* ecx, void*, uint32_t a1, uint32_t a2)
 {
     float* target_fov = (float*)((char*)ecx + 0x158);
+    const float orig = *target_fov;
+
     if (*target_fov == 60.0f)       *target_fov = static_cast<float>(field_of_view);
     else if (*target_fov == 66.0f)  *target_fov = static_cast<float>(center_field_of_view);
     else if (*target_fov == 80.0f)  *target_fov = static_cast<float>(sprint_field_of_view);
+
     orig_fov_update(ecx, a1, a2);
+
+    *target_fov = orig;
 }
 
-// FUN_0101a210: weapon spread frame-independiente. spread_type==2 reescala el "change"
-// por 16.6667/frametime antes del original y restaura los valores ofuscados despues.
+// Weapon spread frame-independiente. spread_type==2
+// reescala el "change" por 16.6667/frametime antes del original y restaura los valores
+// ofuscados despues.
 static void __fastcall patched_calculate_weapon_spread(void* ecx, void*, uint32_t frametime_param, uint8_t param_2)
 {
     funny_value* inner_recovery = (funny_value*)((char*)ecx + 0x170);
@@ -188,7 +208,8 @@ static void __fastcall patched_move_actor_by(void* ecx, void* edx, float deltaX,
 
     void* caller = _ReturnAddress();
 
-    if (caller == (void*)0x00faed67) {
+    // el sitio "en el aire"; el de suelo (0x00526F0E) no se toca
+    if (caller == (void*)S4(0x00527467)) {
         bool airborne = false;
         bool wasFlyingBefore = wasAirborne;
         bool flyEvade = (ctx->actor_state == 0x0B || ctx->actor_state == 0x0C) && wasFlyingBefore;
@@ -255,31 +276,11 @@ static void __fastcall patched_move_actor_by(void* ecx, void* edx, float deltaX,
     orig_move_actor_by(ecx, deltaX, adjustedY, deltaZ);
 }
 
-static void PollFovKeys()
-{
-    static bool lastPlus = false, lastMinus = false;
-    bool plus  = (GetAsyncKeyState(VK_OEM_PLUS) & 0x8000) || (GetAsyncKeyState(VK_ADD) & 0x8000);
-    bool minus = (GetAsyncKeyState(VK_OEM_MINUS) & 0x8000) || (GetAsyncKeyState(VK_SUBTRACT) & 0x8000);
-    int delta = 0;
-    if (plus && !lastPlus)   delta = 1;
-    if (minus && !lastMinus) delta = -1;
-    lastPlus = plus;
-    lastMinus = minus;
-    if (delta) {
-        field_of_view += delta;
-        if (field_of_view < 50)  field_of_view = 50;
-        if (field_of_view > 120) field_of_view = 120;
-        center_field_of_view = field_of_view;
-        sprint_field_of_view = field_of_view + 10;
-    }
-}
-
 static void __fastcall patched_game_tick(void* ecx, void* edx)
 {
     game_context* ctx = fetch_game_context();
     if (!ctx) return;
 
-    PollFovKeys();
 
     bool should_limit = ctx->fps_limiter_toggle != 0;
 
@@ -339,7 +340,7 @@ static void __fastcall patched_game_tick(void* ecx, void* edx)
 }
 
 static void hook_move_actor_by() {
-    orig_move_actor_by = (move_actor_by_t)0x00fa3960;
+    orig_move_actor_by = (move_actor_by_t)S4(0x0051c2f0);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)orig_move_actor_by, (PVOID)patched_move_actor_by);
@@ -347,7 +348,7 @@ static void hook_move_actor_by() {
 }
 
 static void hook_game_tick() {
-    orig_game_tick = (game_tick_t)0x0131f360;
+    orig_game_tick = (game_tick_t)S4(0x00871970);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)orig_game_tick, (PVOID)patched_game_tick);
@@ -355,7 +356,7 @@ static void hook_game_tick() {
 }
 
 static void hook_fun_005e4020() {
-    orig_fun_005e4020 = (fun_005e4020_t)0x010730e0;
+    orig_fun_005e4020 = (fun_005e4020_t)S4(0x005e4020);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)orig_fun_005e4020, (PVOID)patched_fun_005e4020);
@@ -363,7 +364,7 @@ static void hook_fun_005e4020() {
 }
 
 static void hook_fov_update() {
-    orig_fov_update = (fov_consumer_t)0x01202ad0;
+    orig_fov_update = (fov_consumer_t)S4(0x00766000);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)orig_fov_update, (PVOID)patched_fov_update);
@@ -371,7 +372,7 @@ static void hook_fov_update() {
 }
 
 static void hook_calculate_weapon_spread() {
-    orig_calculate_weapon_spread = (calc_spread_t)0x0101a210;
+    orig_calculate_weapon_spread = (calc_spread_t)S4(0x0058c800);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)orig_calculate_weapon_spread, (PVOID)patched_calculate_weapon_spread);
@@ -379,7 +380,7 @@ static void hook_calculate_weapon_spread() {
 }
 
 void patch_min_frametime(double min_frametime) {
-    double* min_frametime_const = (double*)0x01f4ebd8;
+    double* min_frametime_const = (double*)S4(0x013d33a0);
     DWORD oldProtect;
     VirtualProtect(min_frametime_const, sizeof(double), PAGE_EXECUTE_READWRITE, &oldProtect);
     *min_frametime_const = min_frametime;
@@ -391,15 +392,15 @@ static void redirect_speed_dampeners() {
     for (int i = 0; i < 9; i++)
         memcpy(&speed_dampeners[i], value, sizeof(value));
     uint32_t* patch_location = nullptr;
-    patch_location = (uint32_t*)0x00fed93e; *patch_location = (uint32_t)&speed_dampeners[0];
-    patch_location = (uint32_t*)0x0125145d; *patch_location = (uint32_t)&speed_dampeners[1];
-    patch_location = (uint32_t*)0x012514ca; *patch_location = (uint32_t)&speed_dampeners[2];
-    patch_location = (uint32_t*)0x01252024; *patch_location = (uint32_t)&speed_dampeners[3];
-    patch_location = (uint32_t*)0x0125202c; *patch_location = (uint32_t)&speed_dampeners[4];
-    patch_location = (uint32_t*)0x01252793; *patch_location = (uint32_t)&speed_dampeners[5];
-    patch_location = (uint32_t*)0x012527c9; *patch_location = (uint32_t)&speed_dampeners[6];
-    patch_location = (uint32_t*)0x01252cfc; *patch_location = (uint32_t)&speed_dampeners[7];
-    patch_location = (uint32_t*)0x01253183; *patch_location = (uint32_t)&speed_dampeners[8];
+    patch_location = (uint32_t*)S4(0x00563c0e); *patch_location = (uint32_t)&speed_dampeners[0];
+    patch_location = (uint32_t*)S4(0x007b063d); *patch_location = (uint32_t)&speed_dampeners[1];
+    patch_location = (uint32_t*)S4(0x007b06aa); *patch_location = (uint32_t)&speed_dampeners[2];
+    patch_location = (uint32_t*)S4(0x007b1204); *patch_location = (uint32_t)&speed_dampeners[3];
+    patch_location = (uint32_t*)S4(0x007b120c); *patch_location = (uint32_t)&speed_dampeners[4];
+    patch_location = (uint32_t*)S4(0x007b1973); *patch_location = (uint32_t)&speed_dampeners[5];
+    patch_location = (uint32_t*)S4(0x007b19a9); *patch_location = (uint32_t)&speed_dampeners[6];
+    patch_location = (uint32_t*)S4(0x007b1edc); *patch_location = (uint32_t)&speed_dampeners[7];
+    patch_location = (uint32_t*)S4(0x007b2363); *patch_location = (uint32_t)&speed_dampeners[8];
 }
 
 static void prepare_nt_timer() {

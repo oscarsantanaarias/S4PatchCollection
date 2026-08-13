@@ -2,24 +2,30 @@
 #include <windows.h>
 #include "detours.h"
 #include <cstdint>
+#include "../s4_base.h"
 
 namespace
 {
-    // Every LZO caller that does `new[](header+1)` (wrap 0xFFFFFFFF->0) and then
-    // passes the raw attacker header as the decompress capacity to
-    // lzo1x_decompress_safe (0x01b7cd50). The two sites per caller are hooked with
-    // the SAME stateless clamp: alloc and capacity each sanitize the header, so
-    // they stay consistent. new[] = 0x01b25574 (shared), decompressor = 0x01b7cd50.
+    // Cada caller LZO que hace new[](header+1) (con wrap 0xFFFFFFFF->0) y despues le
+    // pasa el header crudo del atacante como capacidad a lzo1x_decompress_safe
+    // (0x0103A0B0). Los dos sites de cada caller llevan el MISMO clamp sin estado:
+    // el alloc y la capacidad sanitizan el header igual, asi que no se desincronizan.
+    // new[] = 0x00FE5D3E (compartido), decompresor = 0x0103A0B0.
+    //
+    // La lista sale de escanear el binario entero por E8 -> 0x0103A0B0: 10 sitios, de
+    // los cuales 9 tienen su new[] pegado (los vulnerables). El decimo (0x00DF27F9) es
+    // un wrapper fino que no allocatea, por eso no entra.
     struct Pair { uintptr_t newSite; uintptr_t decSite; };
     const Pair SITES[] = {
-        { 0x01BF49DF, 0x01BF4A17 }, // FUN_01bf4730  (.s4 blob)
-        { 0x00F6AED7, 0x00F6B04A }, // FUN_00f6a2c0  (generic encrypted-LZO decoder, 64 call-sites)
-        { 0x01C165BC, 0x01C165F4 }, // FUN_01c16300  (.s4)
-        { 0x01C16EFC, 0x01C16F34 }, // FUN_01c16c40  (.s4)
-        { 0x01C1784C, 0x01C17884 }, // FUN_01c17590  (.s4)
-        { 0x01C181A6, 0x01C181DE }, // FUN_01c17ef0  (.s4)
-        { 0x01C4DB6F, 0x01C4DBA7 }, // FUN_01c4d8a0  (.s4)
-        { 0x01B4301B, 0x01B430DB }, // FUN_01b42c50  (.x7 encrypted container)
+        { 0x004E7587, 0x004E76FA }, // FUN_004E6970  (decoder encriptado generico, ^0xFE292513)
+        { 0x00B70B1E, 0x00B70B41 }, // FUN_00B70AB0  (header crudo leido con read(&local,4))
+        { 0x0100413B, 0x010041FB }, // FUN_01003D70  (contenedor .x7 encriptado)
+        { 0x010A52BF, 0x010A52F7 }, // FUN_010A5010  (.s4)
+        { 0x010C6EAC, 0x010C6EE4 }, // FUN_010C6BF0  (.s4)
+        { 0x010C77EC, 0x010C7824 }, // FUN_010C7530  (.s4, gemela estructural)
+        { 0x010C813C, 0x010C8174 }, // FUN_010C7E80  (.s4, gemela estructural)
+        { 0x010C8A96, 0x010C8ACE }, // FUN_010C87E0  (.s4, gemela estructural)
+        { 0x010F7D1F, 0x010F7D57 }, // FUN_010F7A50  (.s4)
     };
 
     // ponytail: 128 MiB ceiling on a decompressed blob; raise if a legit resource
@@ -67,7 +73,7 @@ void InstallLzoS4SizeGuard()
 {
     for (const Pair& p : SITES)
     {
-        RepointCall(p.newSite, (void*)hkNew, (void**)&oNew);
-        RepointCall(p.decSite, (void*)hkDec, (void**)&oDec);
+        RepointCall(S4(p.newSite), (void*)hkNew, (void**)&oNew);
+        RepointCall(S4(p.decSite), (void*)hkDec, (void**)&oDec);
     }
 }

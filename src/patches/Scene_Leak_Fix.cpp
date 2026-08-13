@@ -6,14 +6,25 @@
 #include <mutex>
 #include <cstring>
 #include <cstdint>
+#include "../s4_base.h"
 
 namespace
 {
+    // INTERN apagado: en este build el loader normaliza la clave in place ANTES del
+    // lookup y usa esa misma para el insert, o sea las claves coinciden y no hay leak
+    // por-carga. Internar agregaria un AddRef sobre objetos que el juego si libera, o
+    // sea un UAF.
+    //
+    // ANTIRELOAD es independiente y ataca el spam de recargas / Not-Responding. Efecto
+    // conocido: la ventana de 500ms por slot a veces saltea una recarga y deja un item
+    // del collectionbook en una scene vieja (bloque rojo/roto). Bajar ANTIRELOAD_MS o
+    // apagarlo si molesta.
+    const bool   INTERN = false;
     const bool   ANTIRELOAD = true;
     const DWORD  ANTIRELOAD_MS = 500;
 
-    const uintptr_t SCENE_LOADER_ADDR = 0x01CB8500;
-    const uintptr_t SET_SCENE_ADDR    = 0x01CCCF50;
+    const uintptr_t SCENE_LOADER_ADDR = 0x01162E60;
+    const uintptr_t SET_SCENE_ADDR    = 0x01177E90;
 
     std::string Normalize(const char* path)
     {
@@ -113,11 +124,11 @@ namespace
 
 void InstallSceneLeakFix()
 {
-    oLoadScene = (tLoadScene)SCENE_LOADER_ADDR;
-    oSetScene  = (tSetScene)SET_SCENE_ADDR;
+    oLoadScene = (tLoadScene)S4(SCENE_LOADER_ADDR);
+    oSetScene  = (tSetScene)S4(SET_SCENE_ADDR);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
-    DetourAttach(&(PVOID&)oLoadScene, hkLoadScene);
+    if (INTERN)     DetourAttach(&(PVOID&)oLoadScene, hkLoadScene);
     if (ANTIRELOAD) DetourAttach(&(PVOID&)oSetScene, hkSetScene);
     DetourTransactionCommit();
 }

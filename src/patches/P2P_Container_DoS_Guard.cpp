@@ -2,17 +2,17 @@
 #include <windows.h>
 #include "detours.h"
 #include <cstdint>
+#include "../s4_base.h"
 
 namespace
 {
-    // The two peer-controlled count reads that drive the 20025 container walk:
-    // FUN_014DCD40 sub-msg count (0x014dcd52) and FUN_014E0DD0 entry count
-    // (0x014e0dff). A peer sets the 4-byte count to 0x7FFFFFFF; each iteration
-    // heap-allocs + retains a handler in a std::list -> OOM crash / minutes-long
-    // freeze. Each sub-entry consumes >=4 bytes, so a legit count can never
-    // exceed remaining/4 -> clamping to that is lossless and kills the amplification.
-    const uintptr_t COUNT_SITE_1 = 0x014DCD52; // FUN_014DCD40
-    const uintptr_t COUNT_SITE_2 = 0x014E0DFF; // FUN_014E0DD0
+    // Los dos count reads que maneja el peer en el walk del container 20025. Un peer
+    // pone el count de 4 bytes en 0x7FFFFFFF y cada iteracion allocatea y retiene un
+    // handler en una std::list: OOM o freeze de minutos. Cada sub-entry gasta >=4 bytes,
+    // asi que un count legitimo nunca puede pasar de restante/4. El reader tiene el
+    // tamano en this+8 y el cursor en this+0x10.
+    const uintptr_t COUNT_SITE_1 = 0x00A24132; // FUN_00A24120
+    const uintptr_t COUNT_SITE_2 = 0x00A2800F; // FUN_00A27FE0
 
     typedef unsigned(__fastcall* tRead)(void*, void*, void*, unsigned);
     tRead oRead = nullptr;
@@ -49,6 +49,6 @@ namespace
 
 void InstallP2PContainerDoSGuard()
 {
-    RepointCall(COUNT_SITE_1, (void*)hkReadCount, (void**)&oRead);
-    RepointCall(COUNT_SITE_2, (void*)hkReadCount, (void**)&oRead);
+    RepointCall(S4(COUNT_SITE_1), (void*)hkReadCount, (void**)&oRead);
+    RepointCall(S4(COUNT_SITE_2), (void*)hkReadCount, (void**)&oRead);
 }

@@ -1,23 +1,22 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "detours.h"
+#include "../s4_base.h"
 
 namespace
 {
-    // FUN_01cb0300 (document setter) assigns the sibling field this+0xd8 through
-    // the safe IntrusivePtr_Assign, but stores a freshly-built IDocument into
-    // this+0xdc with a RAW store, never freeing the previous occupant. On the
-    // reload path (FUN_01cb0a10) this+0xdc already holds a live IDocument, so
-    // each reload leaks the old one. +0xdc is a uniquely-owned pointer: the class
-    // destructor (FUN_01caf550) null-checks it and frees it via vtable[0](1).
-    // Fix: free the old +0xdc the same way before the original overwrites it.
-    const uintptr_t SET_DOC  = 0x01CB0300;
+    // El setter asigna el hermano this+0xd8 con IntrusivePtr_Assign pero mete el
+    // IDocument nuevo en this+0xdc con un store CRUDO, sin liberar al anterior: en el
+    // reload +0xdc ya tiene uno vivo, asi que se filtra uno por recarga. +0xdc es de
+    // propiedad unica (el destructor lo null-checkea y lo libera por vtable[0](1)), asi
+    // que liberamos igual antes de pisarlo.
+    const uintptr_t SET_DOC  = 0x0115AD90;
     const unsigned  DOC_OFF  = 0xDC;
 
     typedef void(__thiscall* tDelDtor)(void*, int);
 
     typedef void(__fastcall* tSetDoc)(void*, void*, int*);
-    tSetDoc oSetDoc = (tSetDoc)SET_DOC;
+    tSetDoc oSetDoc = nullptr;
 
     void __fastcall hkSetDoc(void* thisptr, void* edx, int* param_1)
     {
@@ -30,6 +29,7 @@ namespace
 
 void InstallIDocumentReloadLeakFix()
 {
+    oSetDoc = (tSetDoc)S4(SET_DOC);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)oSetDoc, hkSetDoc);

@@ -18,11 +18,15 @@ void InstallP2PContainerDoSGuard();
 void InstallIDocumentReloadLeakFix();
 void InstallXmlOverReadGuard();
 void StartGameEnhancements();
+void StartOverlay();
 void StartNewActorState();
+void StartConsole();
 extern "C" void StartHeapFixes(int lfh, int failsoft19, int badAlloc32);
 
 static DWORD WINAPI InitThread(LPVOID)
 {
+    StartConsole();
+
     InstallArcadeStackOverflowFix();
     InstallFileExistsCache();
     InstallMemoryJumpFix();
@@ -33,10 +37,6 @@ static DWORD WINAPI InitThread(LPVOID)
     InstallLoadingTipCache();
     InstallX7DecryptGuard();
     InstallBlobTreeGuard();
-    // SIDE EFFECT conocido: el anti-reload por-slot (FIX 2, ventana 500ms de los
-    // 10 slots de SetScene) rara vez saltea recargar un slot -> un item del
-    // collectionbook queda con el scene stale (bloque rojo/roto). Si molesta:
-    // ANTIRELOAD=false (o bajar ANTIRELOAD_MS) en Scene_Leak_Fix.cpp.
     InstallSceneLeakFix();
     InstallS4hdMountGuard();
     InstallResWrapperLeakFix();
@@ -44,10 +44,11 @@ static DWORD WINAPI InitThread(LPVOID)
     InstallP2PContainerDoSGuard();
     InstallIDocumentReloadLeakFix();
     InstallXmlOverReadGuard();
-    StartHeapFixes(1, 1, 0);
+    StartHeapFixes(1, 0, 0);
     StartGameEnhancements();
     StartNewActorState();
-    LoadLibraryA("inflar.dll");
+    StartOverlay();
+   
     return 0;
 }
 
@@ -55,7 +56,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
 {
     if (reason == DLL_PROCESS_ATTACH)
     {
-        LoadLibraryA("mutex.dll");
+       
         DisableThreadLibraryCalls(hModule);
         CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
     }

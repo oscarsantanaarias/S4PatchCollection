@@ -1,14 +1,15 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include "../s4_base.h"
 #include <cstdint>
 
 namespace
 {
-    const uintptr_t REPARSE_FN = 0x01B5A210;
-    const uintptr_t CALL_SITE  = 0x013DA462;
+    const uintptr_t REPARSE_FN = 0x01019ED0;
+    const uintptr_t CALL_SITE  = 0x00929BCA;
 
     typedef void(__fastcall* tReparse)(void* thisTbl, void* edx, void* Str);
-    tReparse oReparse = (tReparse)REPARSE_FN;
+    tReparse oReparse = nullptr;
     volatile long g_tipLoaded = 0;
 
     void __fastcall guardReparse(void* thisTbl, void* edx, void* Str)
@@ -33,5 +34,6 @@ namespace
 
 void InstallLoadingTipCache()
 {
-    RepointCall(CALL_SITE, (void*)guardReparse);
+    oReparse = (tReparse)S4(REPARSE_FN);
+    RepointCall(S4(CALL_SITE), (void*)guardReparse);
 }

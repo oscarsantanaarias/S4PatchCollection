@@ -1,5 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include "../s4_base.h"
 #include "detours.h"
 
 namespace
@@ -15,8 +16,8 @@ namespace
     // del NUL, el caller recibe el NUL y para ahí. Input válido: el retorno queda
     // antes del NUL (hay más contenido) -> sin cambios.
 
-    const uintptr_t COMMENT = 0x01B47500; // __thiscall(this, cursor, out, endTag)
-    const uintptr_t DELIM   = 0x01B45780; // __cdecl(cursor, delim?, ...) -> cursor
+    const uintptr_t COMMENT = 0x01008600; // __thiscall(this, cursor, out, endTag)
+    const uintptr_t DELIM   = 0x01006880; // __cdecl(cursor, delim?, ...) -> cursor
 
     // Clampa `ret` para que no supere el primer NUL alcanzable desde `from`.
     // Solo lee bytes válidos (se detiene en el NUL, que está dentro del buffer).
@@ -31,8 +32,8 @@ namespace
     typedef unsigned char*(__fastcall* tComment)(void*, void*, unsigned char*, void*, int);
     typedef unsigned char*(__cdecl* tDelim)(unsigned char*, const char*, char, char*, char, int);
 
-    tComment oComment = (tComment)COMMENT;
-    tDelim   oDelim   = (tDelim)DELIM;
+    tComment oComment = nullptr;
+    tDelim   oDelim   = nullptr;
 
     unsigned char* __fastcall hkComment(void* thisptr, void* edx, unsigned char* cursor, void* out, int endTag)
     {
@@ -47,6 +48,9 @@ namespace
 
 void InstallXmlOverReadGuard()
 {
+    oComment = (tComment)S4(COMMENT);
+    oDelim   = (tDelim)S4(DELIM);
+
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)oComment, hkComment);

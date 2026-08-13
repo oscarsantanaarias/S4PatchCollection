@@ -2,11 +2,15 @@
 #include <windows.h>
 #include "detours.h"
 #include <cstdint>
+#include "../s4_base.h"
 
 namespace
 {
-    const uintptr_t LOAD_OR_ADOPT = 0x01B32730;
-    const uintptr_t FACTORY_SITE  = 0x01B32807;
+    // load-or-adopt del ResMgr: si el factory (el call en +0xD7) devuelve NULL, el if de
+    // abajo no entra y nadie libera el wrapper que llego por param_2, asi que se filtra
+    // uno por cada load fallido. Solo la rama factory!=NULL libera.
+    const uintptr_t LOAD_OR_ADOPT = 0x00FF34D0;
+    const uintptr_t FACTORY_SITE  = 0x00FF35A7;
 
     thread_local void* g_wrapper = nullptr;
 
@@ -19,7 +23,7 @@ namespace
     }
 
     typedef void*(__fastcall* tLoadOrAdopt)(void*, void*, char*, void*);
-    tLoadOrAdopt oLoadOrAdopt = (tLoadOrAdopt)LOAD_OR_ADOPT;
+    tLoadOrAdopt oLoadOrAdopt = nullptr;
 
     void* __fastcall hkLoadOrAdopt(void* thisptr, void* edx, char* path, void* wrapper)
     {
@@ -62,7 +66,9 @@ namespace
 
 void InstallResWrapperLeakFix()
 {
-    RepointCall(FACTORY_SITE, (void*)hkFactory, (void**)&oFactory);
+    oLoadOrAdopt = (tLoadOrAdopt)S4(LOAD_OR_ADOPT);
+
+    RepointCall(S4(FACTORY_SITE), (void*)hkFactory, (void**)&oFactory);
 
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
