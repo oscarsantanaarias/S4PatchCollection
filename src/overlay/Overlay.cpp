@@ -10,10 +10,6 @@
 #pragma comment(lib, "d3d9.lib")
 #pragma comment(lib, "detours.lib")
 
-// contadores de los patches, para verlos en vivo sin escribir nada a disco
-extern "C" long FileExistsServed();
-extern "C" long FileExistsDisk();
-
 // knobs de enhancements/Fps.cpp
 extern int max_framerate;
 extern int full_framerate;
@@ -163,18 +159,6 @@ namespace
             if (Stepper("hz", &hz, 30, 240, "%d Hz"))
                 physics_hz = (float)hz;
             ImGui::TextDisabled("actor state %u", ActorState());
-
-            ImGui::Spacing();
-            Heading("RESOURCE LOOKUPS");
-
-            const long served = FileExistsServed();
-            const long disk   = FileExistsDisk();
-            const long total  = served + disk;
-            ImGui::TextDisabled("total          %ld", total);
-            ImGui::TextDisabled("a disco        %ld", disk);
-            ImGui::TextDisabled("del cache      %ld", served);
-            if (total > 0)
-                ImGui::TextDisabled("ahorro         %.1f%%", 100.0 * served / total);
 
             ImGui::Spacing();
             ImGui::Separator();
