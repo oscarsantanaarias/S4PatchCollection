@@ -109,6 +109,7 @@
     <ClCompile Include="patches\Manifest_Read_Clamp.cpp" />
     <ClCompile Include="patches\Lzo_Unbounded_Guard.cpp" />
     <ClCompile Include="patches\Heap_Fixes.cpp" />
+    <ClCompile Include="enhancements\Fps.cpp" />
     <ClCompile Include="overlay\Overlay.cpp" />
     <ClCompile Include="overlay\imgui\imgui.cpp" />
     <ClCompile Include="overlay\imgui\imgui_draw.cpp" />

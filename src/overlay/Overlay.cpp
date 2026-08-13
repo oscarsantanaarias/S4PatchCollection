@@ -14,6 +14,15 @@
 extern "C" long FileExistsServed();
 extern "C" long FileExistsDisk();
 
+// knobs de enhancements/Fps.cpp
+extern int max_framerate;
+extern int full_framerate;
+extern bool fps_unlocked;
+extern float physics_hz;
+extern float field_of_view;
+extern float applied_fov;
+uint32_t ActorState();
+
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
 namespace
@@ -95,6 +104,24 @@ namespace
         ImGui::Spacing();
     }
 
+    // valor con [-] y [+] a los costados, un paso por click
+    bool Stepper(const char* id, int* v, int lo, int hi, const char* fmt)
+    {
+        bool changed = false;
+        ImGui::PushID(id);
+        const float btn = ImGui::GetFrameHeight();
+        if (ImGui::Button("-", ImVec2(btn, btn))) { (*v)--; changed = true; }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - btn - ImGui::GetStyle().ItemSpacing.x);
+        if (ImGui::SliderInt("##v", v, lo, hi, fmt)) changed = true;
+        ImGui::SameLine();
+        if (ImGui::Button("+", ImVec2(btn, btn))) { (*v)++; changed = true; }
+        ImGui::PopID();
+        if (*v < lo) *v = lo;
+        if (*v > hi) *v = hi;
+        return changed;
+    }
+
     void Draw()
     {
         const ImVec2 disp = ImGui::GetIO().DisplaySize;
@@ -116,6 +143,28 @@ namespace
             ImGui::Separator();
             ImGui::Spacing();
 
+            Heading("FRAMERATE");
+            Stepper("fps", &max_framerate, 30, 1000, "%d FPS");
+            ImGui::Checkbox("F5  quitar el cap", &fps_unlocked);
+
+            ImGui::Spacing();
+            Heading("FIELD OF VIEW");
+
+            // El hook de la matriz aplica un offset sobre el FOV del juego, asi que el
+            // +20 del sprint y su transicion suave se conservan.
+            int fov = (int)field_of_view;
+            if (Stepper("fov", &fov, 41, 99, "%d deg"))
+                field_of_view = (float)fov;
+            ImGui::TextDisabled("aplicado %.1f   (PgUp / PgDn)", applied_fov);
+
+            ImGui::Spacing();
+            Heading("PHYSICS");
+            int hz = (int)physics_hz;
+            if (Stepper("hz", &hz, 30, 240, "%d Hz"))
+                physics_hz = (float)hz;
+            ImGui::TextDisabled("actor state %u", ActorState());
+
+            ImGui::Spacing();
             Heading("RESOURCE LOOKUPS");
 
             const long served = FileExistsServed();

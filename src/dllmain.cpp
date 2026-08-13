@@ -9,6 +9,7 @@ void InstallHttpImageCacheFix();
 void InstallResWrapperLeakFix();
 void InstallManifestReadClamp();
 void InstallLzoUnboundedGuard();
+void StartGameEnhancements();
 void StartOverlay();
 void StartConsole();
 extern "C" void StartHeapFixes(int lfh, int failsoft, int unused);
@@ -27,6 +28,7 @@ static DWORD WINAPI InitThread(LPVOID)
     InstallManifestReadClamp();
     InstallLzoUnboundedGuard();
     StartHeapFixes(1, 0, 0);
+    StartGameEnhancements();
     StartOverlay();
     LoadLibraryA("inflar.dll");
     return 0;
