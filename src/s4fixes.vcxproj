@@ -99,7 +99,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="Console.cpp" />
     <ClCompile Include="patches\Enchant_OOB_Fix.cpp" />
     <ClCompile Include="patches\Arcade_StackOverflow_Fix.cpp" />
     <ClCompile Include="patches\HttpImageCache_Fix.cpp" />

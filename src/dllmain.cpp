@@ -20,13 +20,10 @@ void InstallXmlOverReadGuard();
 void StartGameEnhancements();
 void StartOverlay();
 void StartNewActorState();
-void StartConsole();
 extern "C" void StartHeapFixes(int lfh, int failsoft19, int badAlloc32);
 
 static DWORD WINAPI InitThread(LPVOID)
 {
-    StartConsole();
-
     InstallArcadeStackOverflowFix();
     InstallFileExistsCache();
     InstallMemoryJumpFix();

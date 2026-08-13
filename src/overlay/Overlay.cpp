@@ -20,11 +20,6 @@ extern int center_field_of_view;
 extern int sprint_field_of_view;
 void ApplyFrameRate();
 
-// contadores de los patches, para verlos en vivo sin escribir nada a disco
-extern "C" long FileExistsServed();
-extern "C" long FileExistsDisk();
-extern "C" long OomCaught();
-
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
 namespace
@@ -247,17 +242,6 @@ namespace
             if (Stepper("sprintoff", &g_sprintOffset, 0, 60, "sprint +%d")) { ApplyFov(field_of_view); dirty = true; }
 
             ImGui::TextDisabled("center %d   sprint %d", center_field_of_view, sprint_field_of_view);
-
-            ImGui::Spacing();
-            Heading("FIXES");
-
-            const long served = FileExistsServed();
-            const long disk   = FileExistsDisk();
-            const long total  = served + disk;
-            ImGui::TextDisabled("file lookups   %ld   (disco %ld, cache %ld)", total, disk, served);
-            if (total > 0)
-                ImGui::TextDisabled("ahorro         %.1f%%", 100.0 * served / total);
-            ImGui::TextDisabled("oom fail-soft  %ld", OomCaught());
 
             ImGui::Spacing();
             ImGui::Separator();

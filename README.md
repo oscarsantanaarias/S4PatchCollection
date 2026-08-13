@@ -12,7 +12,6 @@ against the disassembly.
 - `src/patches/` - one file per bug fix, nothing else goes in this folder.
 - `src/enhancements/` - features rather than fixes.
 - `src/overlay/` - the in-game settings menu, with a vendored ImGui.
-- `src/Console.cpp` - the diagnostics console.
 - `third_party/` - Detours.
 
 ## Addresses
@@ -36,7 +35,7 @@ Open `s4fixes.sln`, build `Release|Win32`. Output goes to `bin/`. To have it lan
 in your client folder too, set `S4ClientDir` in a `s4fixes.vcxproj.user`, which
 stays out of the repo. The copy is skipped, not failed, when the file is in use.
 
-## Overlay and console
+## Overlay
 
 `INSERT` toggles an in-game settings menu, off by default. Max framerate and field
 of view, both applied live. FOV is one value with a tunable sprint offset, since
@@ -46,10 +45,6 @@ the game derives its three view states from a single number. Settings persist to
 It's drawn by hooking the device vtable, `EndScene` for the frame and `Reset` for
 resolution changes. The subclassed `WndProc` only forwards input while the menu is
 open, so the game keeps keyboard and mouse the rest of the time.
-
-The console prints the resource lookup and fail-soft counters on one line that
-rewrites itself. Set `ENABLED` to false in `Console.cpp` to drop it. Nothing here
-writes to disk.
 
 ## Fixes
 
@@ -111,8 +106,8 @@ writes to disk.
 - `FileExists_Cache.cpp` - the most called check in the resource pipeline opens
   and closes a file handle on every query, and read-only resources don't change
   while the game runs. It was hitting the disk over two hundred thousand times per
-  session; now under eight thousand. The counters are exported and shown in the
-  overlay.
+  session; now under eight thousand. Hit and miss counts are exported if you want
+  to measure it yourself.
 - `Heap_Fixes.cpp` - the Low Fragmentation Heap for every heap in the process,
   including the ones created later, plus fail-soft wrappers on the allocators so a
   `bad_alloc` returns null instead of killing the process. 15 of the 19 wrappers
