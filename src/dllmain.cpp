@@ -9,6 +9,7 @@ void InstallHttpImageCacheFix();
 void InstallResWrapperLeakFix();
 void InstallManifestReadClamp();
 void InstallLzoUnboundedGuard();
+void InstallMemoryJumpFix();
 void StartGameEnhancements();
 void StartOverlay();
 void StartConsole();
@@ -27,6 +28,7 @@ static DWORD WINAPI InitThread(LPVOID)
     InstallResWrapperLeakFix();
     InstallManifestReadClamp();
     InstallLzoUnboundedGuard();
+    InstallMemoryJumpFix();
     StartHeapFixes(1, 0, 0);
     StartGameEnhancements();
     StartOverlay();

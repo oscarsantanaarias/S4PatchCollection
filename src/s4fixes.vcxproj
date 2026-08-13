@@ -108,6 +108,7 @@
     <ClCompile Include="patches\ResWrapper_Leak_Fix.cpp" />
     <ClCompile Include="patches\Manifest_Read_Clamp.cpp" />
     <ClCompile Include="patches\Lzo_Unbounded_Guard.cpp" />
+    <ClCompile Include="patches\Memory_Jump_Fix.cpp" />
     <ClCompile Include="patches\Heap_Fixes.cpp" />
     <ClCompile Include="enhancements\Fps.cpp" />
     <ClCompile Include="overlay\Overlay.cpp" />
