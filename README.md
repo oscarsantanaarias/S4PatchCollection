@@ -11,7 +11,6 @@ against the disassembly.
 - `src/patches/` - one file per bug fix, nothing else goes in this folder.
 - `src/enhancements/` - features rather than fixes.
 - `src/overlay/` - the in-game panel, with a vendored ImGui.
-- `src/Console.cpp` - the diagnostics console.
 - `third_party/` - Detours.
 
 ## Addresses
@@ -32,16 +31,13 @@ Open `s4fixes.sln`, build `Release|Win32`. Output goes to `bin/`. To have it lan
 in your client folder too, set `S4ClientDir` in a `s4fixes.vcxproj.user`, which
 stays out of the repo. The copy is skipped, not failed, when the file is in use.
 
-## Overlay and console
+## Overlay
 
 `INSERT` toggles the panel, off by default. Framerate cap, field of view and the
 physics rate, all applied live, plus the current actor state. It's drawn by
 hooking the device vtable, `EndScene` for the frame and `Reset` for resolution
 changes. The subclassed `WndProc` only forwards input while the panel is open, so
 the game keeps keyboard and mouse the rest of the time.
-
-The console prints the resource lookup counters on one line that rewrites itself.
-Set `ENABLED` to false in `Console.cpp` to drop it. Nothing here writes to disk.
 
 ## Fixes
 

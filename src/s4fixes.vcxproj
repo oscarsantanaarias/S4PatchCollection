@@ -99,7 +99,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="Console.cpp" />
     <ClCompile Include="patches\Arcade_Alloc_Fix.cpp" />
     <ClCompile Include="patches\FileExists_Cache.cpp" />
     <ClCompile Include="patches\X7Decrypt_Guard.cpp" />
