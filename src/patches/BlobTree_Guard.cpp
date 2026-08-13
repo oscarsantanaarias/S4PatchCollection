@@ -28,6 +28,11 @@ namespace
 
 void InstallBlobTreeGuard()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oEntry = (tEntry)S4(BLOB_ENTRY);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());

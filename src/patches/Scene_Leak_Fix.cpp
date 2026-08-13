@@ -124,6 +124,11 @@ namespace
 
 void InstallSceneLeakFix()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oLoadScene = (tLoadScene)S4(SCENE_LOADER_ADDR);
     oSetScene  = (tSetScene)S4(SET_SCENE_ADDR);
     DetourTransactionBegin();

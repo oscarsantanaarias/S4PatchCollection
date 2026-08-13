@@ -31,6 +31,8 @@ namespace
     {
         if (*(uint8_t*)site != 0xE8)
             return false;
+        if ((void*)(site + 5 + *(int32_t*)(site + 1)) == target)
+            return true;                  // ya repunteado
         DWORD old;
         if (!VirtualProtect((void*)(site + 1), 4, PAGE_EXECUTE_READWRITE, &old))
             return false;
@@ -43,6 +45,11 @@ namespace
 
 void InstallHttpImageCacheFix()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oInsert = (tInsert)S4(INSERT_FN);
     RepointCall(S4(CALL_SITE), (void*)guardInsert);
 }

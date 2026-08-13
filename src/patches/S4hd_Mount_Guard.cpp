@@ -30,6 +30,11 @@ namespace
 
 void InstallS4hdMountGuard()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oMount = (tMount)S4(S4HD_MOUNT);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());

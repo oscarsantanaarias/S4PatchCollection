@@ -36,7 +36,10 @@ namespace
         if (*(uint8_t*)site != 0xE8)
             return false;
         int32_t* rel = (int32_t*)(site + 1);
-        *origOut = (void*)(site + 5 + *rel);
+        void* current = (void*)(site + 5 + *rel);
+        if (current == target)
+            return true;                  // ya repunteado, no se vuelve a tomar
+        *origOut = current;
         DWORD old;
         if (!VirtualProtect(rel, 4, PAGE_EXECUTE_READWRITE, &old))
             return false;
@@ -49,6 +52,11 @@ namespace
 
 void InstallP2PContainerDoSGuard()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     RepointCall(S4(COUNT_SITE_1), (void*)hkReadCount, (void**)&oRead);
     RepointCall(S4(COUNT_SITE_2), (void*)hkReadCount, (void**)&oRead);
 }

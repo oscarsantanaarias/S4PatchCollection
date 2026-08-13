@@ -29,6 +29,11 @@ namespace
 
 void InstallIDocumentReloadLeakFix()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oSetDoc = (tSetDoc)S4(SET_DOC);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());

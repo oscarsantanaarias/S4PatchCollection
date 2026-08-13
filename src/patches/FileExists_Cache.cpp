@@ -57,6 +57,11 @@ extern "C" __declspec(dllexport) long FileExistsDisk()   { return g_disk; }
 
 void InstallFileExistsCache()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oFileExists = (tFileExists)S4(FILE_EXISTS);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());

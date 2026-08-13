@@ -70,6 +70,11 @@ namespace
 
 void InstallX7DecryptGuard()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oDecrypt     = (tDecrypt)S4(DECRYPT_X7);
     oFileLoad    = (tFileLoad)S4(FILE_LOAD);
     oFileRelease = (tFileRelease)S4(FILE_RELEASE);

@@ -29,6 +29,11 @@ static DWORD WINAPI ConsoleThread(LPVOID)
 
 void StartConsole()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     if (!ENABLED) return;
     if (!AllocConsole()) return;
 

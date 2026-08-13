@@ -24,6 +24,11 @@ namespace
 
 void InstallArcadeStackOverflowFix()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oRead = (tRead)S4(READ_PRIM);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());

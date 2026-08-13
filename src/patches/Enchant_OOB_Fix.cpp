@@ -6,4 +6,9 @@
 // el memcpy a index*stride + this sin validar el index. No hay nada que parchear.
 void InstallEnchantOOBFix()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
 }

@@ -13,6 +13,11 @@ namespace
 
 void InstallStructVectorCapFix()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     const uintptr_t insn = S4(CMP_INSN);
     const uintptr_t disp = S4(CMP_DISP32);
     if (*(uint8_t*)insn != 0x3B || *(uint8_t*)(insn + 1) != 0x05)

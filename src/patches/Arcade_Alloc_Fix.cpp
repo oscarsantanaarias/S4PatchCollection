@@ -21,6 +21,11 @@ namespace
 
 void InstallArcadeAllocFix()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oAlloc = (tAlloc)S4(ARCADE_ALLOC);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());

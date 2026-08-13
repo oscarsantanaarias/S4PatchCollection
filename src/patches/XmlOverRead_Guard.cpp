@@ -48,6 +48,11 @@ namespace
 
 void InstallXmlOverReadGuard()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oComment = (tComment)S4(COMMENT);
     oDelim   = (tDelim)S4(DELIM);
 

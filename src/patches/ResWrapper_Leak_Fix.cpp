@@ -53,7 +53,10 @@ namespace
         if (*(uint8_t*)site != 0xE8)
             return false;
         int32_t* rel = (int32_t*)(site + 1);
-        *origOut = (void*)(site + 5 + *rel);
+        void* current = (void*)(site + 5 + *rel);
+        if (current == target)
+            return true;                  // ya repunteado, no se vuelve a tomar
+        *origOut = current;
         DWORD old;
         if (!VirtualProtect(rel, 4, PAGE_EXECUTE_READWRITE, &old))
             return false;
@@ -66,6 +69,11 @@ namespace
 
 void InstallResWrapperLeakFix()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oLoadOrAdopt = (tLoadOrAdopt)S4(LOAD_OR_ADOPT);
 
     RepointCall(S4(FACTORY_SITE), (void*)hkFactory, (void**)&oFactory);
