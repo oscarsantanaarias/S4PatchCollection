@@ -1,6 +1,6 @@
 # S4Fixes
 
-Client-side hardening for the S10 client, S4Client.exe, image base 0x00400000.
+Client-side hardening for the S10 client, S4Client.exe,
 Each fix is a Detours hook, added one at a time as it gets confirmed.
 
 ## Layout
