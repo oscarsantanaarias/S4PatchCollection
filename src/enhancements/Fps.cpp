@@ -155,19 +155,6 @@ static void __fastcall patched_fov_update(void* ecx, void*, uint32_t a1, uint32_
     float* target_fov = (float*)((char*)ecx + 0x158);
     const float orig = *target_fov;
 
-    // TEMPORARY: 60/66/80 come from a different build. Print every distinct value this
-    // one actually writes so we can see what sprint uses. Watch with DebugView, then
-    // delete this block.
-    {
-        static float seen = -1.0f;
-        if (orig != seen) {
-            seen = orig;
-            char msg[64];
-            wsprintfA(msg, "[fov] 0x158 = %d\r\n", (int)orig);
-            OutputDebugStringA(msg);
-        }
-    }
-
     if (*target_fov == 60.0f)       *target_fov = static_cast<float>(field_of_view);
     else if (*target_fov == 66.0f)  *target_fov = static_cast<float>(center_field_of_view);
     else if (*target_fov == 80.0f)  *target_fov = static_cast<float>(sprint_field_of_view);

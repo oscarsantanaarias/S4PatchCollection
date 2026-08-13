@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "detours.h"
+#include "../s4_base.h"
 #include <cstdint>
 
 namespace
@@ -20,6 +21,13 @@ namespace
         { 0x01C181A6, 0x01C181DE }, // FUN_01c17ef0  (.s4)
         { 0x01C4DB6F, 0x01C4DBA7 }, // FUN_01c4d8a0  (.s4)
         { 0x01B4301B, 0x01B430DB }, // FUN_01b42c50  (.x7 encrypted container)
+        // Found by scanning the whole image for E8 -> 0x01b7cd50 instead of trusting the
+        // list above: 11 call sites, and these two were uncovered. Same shape as the rest
+        // (new[] a few instructions before the decompress call).
+        { 0x0164968E, 0x016496B1 }, // FUN_01649620  (216 b)
+        { 0x0164A99E, 0x0164A9C1 }, // FUN_0164a930  (216 b, structural twin of the above)
+        // The 11th site, 0x019077b9 (FUN_019077a0, 49 b), has no new[] near it: thin
+        // wrapper that forwards someone else's buffer, nothing to clamp.
     };
 
     // ponytail: 128 MiB ceiling on a decompressed blob; raise if a legit resource
@@ -52,7 +60,10 @@ namespace
         if (*(uint8_t*)site != 0xE8)
             return false;
         int32_t* rel = (int32_t*)(site + 1);
-        *origOut = (void*)(site + 5 + *rel);
+        void* current = (void*)(site + 5 + *rel);
+        if (current == target)
+            return true;                  // ya repunteado, no se vuelve a tomar
+        *origOut = current;
         DWORD old;
         if (!VirtualProtect(rel, 4, PAGE_EXECUTE_READWRITE, &old))
             return false;
@@ -65,9 +76,14 @@ namespace
 
 void InstallLzoS4SizeGuard()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     for (const Pair& p : SITES)
     {
-        RepointCall(p.newSite, (void*)hkNew, (void**)&oNew);
-        RepointCall(p.decSite, (void*)hkDec, (void**)&oDec);
+        RepointCall(S4(p.newSite), (void*)hkNew, (void**)&oNew);
+        RepointCall(S4(p.decSite), (void*)hkDec, (void**)&oDec);
     }
 }

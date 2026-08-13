@@ -150,6 +150,11 @@ static DWORD WINAPI PollThread(LPVOID)
 
 void StartNewActorState()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)orig_get_current_state_id, (PVOID)patched_get_current_state_id);

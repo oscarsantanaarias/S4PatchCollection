@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "detours.h"
+#include "../s4_base.h"
 
 namespace
 {
@@ -17,7 +18,7 @@ namespace
     typedef void(__thiscall* tDelDtor)(void*, int);
 
     typedef void(__fastcall* tSetDoc)(void*, void*, int*);
-    tSetDoc oSetDoc = (tSetDoc)SET_DOC;
+    tSetDoc oSetDoc = nullptr;
 
     void __fastcall hkSetDoc(void* thisptr, void* edx, int* param_1)
     {
@@ -30,6 +31,14 @@ namespace
 
 void InstallIDocumentReloadLeakFix()
 {
+    // no reinstalar: el puntero al original ya apunta al trampolin de Detours,
+    // reasignarlo lo devolveria a la funcion parcheada y quedaria recursion infinita
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
+    oSetDoc = (tSetDoc)S4(SET_DOC);
+
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)oSetDoc, hkSetDoc);

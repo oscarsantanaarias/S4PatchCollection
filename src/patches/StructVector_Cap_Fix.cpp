@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <cstdint>
+#include "../s4_base.h"
 
 namespace
 {
@@ -12,13 +13,20 @@ namespace
 
 void InstallStructVectorCapFix()
 {
-    if (*(uint8_t*)CMP_INSN != 0x3B || *(uint8_t*)(CMP_INSN + 1) != 0x05)
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
+    const uintptr_t insn = S4(CMP_INSN);
+    const uintptr_t disp = S4(CMP_DISP32);
+    if (*(uint8_t*)insn != 0x3B || *(uint8_t*)(insn + 1) != 0x05)
         return;
     DWORD old;
-    if (!VirtualProtect((void*)CMP_DISP32, 4, PAGE_EXECUTE_READWRITE, &old))
+    if (!VirtualProtect((void*)disp, 4, PAGE_EXECUTE_READWRITE, &old))
         return;
-    *(uint32_t*)CMP_DISP32 = (uint32_t)(uintptr_t)&g_l01_cap;
-    VirtualProtect((void*)CMP_DISP32, 4, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), (void*)CMP_INSN, 8);
+    *(uint32_t*)disp = (uint32_t)(uintptr_t)&g_l01_cap;
+    VirtualProtect((void*)disp, 4, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), (void*)insn, 8);
     (void)g_l01_blocked;
 }

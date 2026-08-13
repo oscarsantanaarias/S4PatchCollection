@@ -42,7 +42,6 @@ typedef void* (__fastcall* tA)(void*, void*, int);
     __except (GetExceptionCode()==CPP_EXC ? EXCEPTION_EXECUTE_HANDLER                 \
                                           : EXCEPTION_CONTINUE_SEARCH) {              \
       InterlockedIncrement(&g_caught);                                                \
-      OutputDebugStringA("[oom] " #NAME " fail-soft -> NULL\r\n");                    \
       return 0;                                                                       \
     }                                                                                 \
   }
@@ -69,7 +68,7 @@ static void* __fastcall h_f01ae4dd0(void* ecx, void* edx, void* a1, unsigned a2)
     __try { return o_f01ae4dd0(ecx, edx, a1, a2); }
     __except (GetExceptionCode() == CPP_EXC ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
         InterlockedIncrement(&g_caught);
-        OutputDebugStringA("[oom] f01ae4dd0 fail-soft -> NULL\r\n"); return 0;
+        return 0;
     }
 }
 
@@ -77,13 +76,11 @@ static tA o_f01b0daf0 = (tA)S4(0x01B0DAF0);
 static void* __fastcall h_f01b0daf0(void* ecx, void* edx, int a1) {
     if ((unsigned)a1 > 0x100000u) {
         InterlockedIncrement(&g_caught);
-        OutputDebugStringA("[c01] f01b0daf0 rejected out-of-range frame-map count\r\n");
         return 0;
     }
     __try { return o_f01b0daf0(ecx, edx, a1); }
     __except (GetExceptionCode() == CPP_EXC ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
         InterlockedIncrement(&g_caught);
-        OutputDebugStringA("[oom] f01b0daf0 fail-soft -> NULL\r\n");
         return 0;
     }
 }
@@ -96,7 +93,7 @@ typedef unsigned(__cdecl* tC)(int);
     __except (GetExceptionCode()==CPP_EXC ? EXCEPTION_EXECUTE_HANDLER                 \
                                           : EXCEPTION_CONTINUE_SEARCH) {              \
       InterlockedIncrement(&g_caught);                                                \
-      OutputDebugStringA("[oom] " #NAME " (bad_alloc) fail-soft -> NULL\r\n"); return 0; \
+      return 0;                                                                       \
     }                                                                                 \
   }
 HOOK_C(c017bb8e0, S4(0x017BB8E0)) HOOK_C(c00fba260, S4(0x00FBA260)) HOOK_C(c012ba620, S4(0x012BA620))
@@ -112,6 +109,12 @@ HOOK_C(c01642ae0, S4(0x01642AE0)) HOOK_C(c013c2750, S4(0x013C2750)) HOOK_C(c011c
 HOOK_C(c01906dd0, S4(0x01906DD0)) HOOK_C(c011c6e50, S4(0x011C6E50))
 
 extern "C" void StartHeapFixes(int lfh, int failsoft19, int badAlloc32) {
+    // no reinstalar: los punteros o_ ya apuntan a los trampolines de Detours,
+    // enganchar de nuevo hookearia el trampolin y quedaria recursion infinita
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     if (lfh) CreateThread(0, 0, LfhThread, 0, 0, 0);
 
     if (!failsoft19 && !badAlloc32) return;

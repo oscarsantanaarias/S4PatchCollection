@@ -18,6 +18,11 @@ static const uintptr_t BE_JNZ = 0x00F16E6F;
 // it does. Bail after 10s rather than spin forever on a client that never matches.
 void InstallBattlEyeBypass()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     BYTE* p = (BYTE*)S4(BE_JNZ);
 
     for (int i = 0; i < 10000; ++i)

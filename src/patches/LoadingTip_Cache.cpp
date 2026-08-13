@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <cstdint>
+#include "../s4_base.h"
 
 namespace
 {
@@ -8,7 +9,7 @@ namespace
     const uintptr_t CALL_SITE  = 0x013DA462;
 
     typedef void(__fastcall* tReparse)(void* thisTbl, void* edx, void* Str);
-    tReparse oReparse = (tReparse)REPARSE_FN;
+    tReparse oReparse = nullptr;
     volatile long g_tipLoaded = 0;
 
     void __fastcall guardReparse(void* thisTbl, void* edx, void* Str)
@@ -21,6 +22,8 @@ namespace
     {
         if (*(uint8_t*)site != 0xE8)
             return false;
+        if ((void*)(site + 5 + *(int32_t*)(site + 1)) == target)
+            return true;                  // ya repunteado
         DWORD old;
         if (!VirtualProtect((void*)(site + 1), 4, PAGE_EXECUTE_READWRITE, &old))
             return false;
@@ -33,5 +36,13 @@ namespace
 
 void InstallLoadingTipCache()
 {
-    RepointCall(CALL_SITE, (void*)guardReparse);
+    // no reinstalar: el puntero al original ya apunta al trampolin de Detours,
+    // reasignarlo lo devolveria a la funcion parcheada y quedaria recursion infinita
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
+    oReparse = (tReparse)S4(REPARSE_FN);
+
+    RepointCall(S4(CALL_SITE), (void*)guardReparse);
 }

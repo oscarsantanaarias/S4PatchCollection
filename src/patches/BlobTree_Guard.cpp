@@ -1,13 +1,14 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "detours.h"
+#include "../s4_base.h"
 
 namespace
 {
     const uintptr_t BLOB_ENTRY = 0x01C79000;
 
     typedef char(__fastcall* tEntry)(void*, void*, void*);
-    tEntry oEntry = (tEntry)BLOB_ENTRY;
+    tEntry oEntry = nullptr;
 
     char __fastcall hkEntry(void* thisptr, void* edx, void* src)
     {
@@ -24,6 +25,14 @@ namespace
 
 void InstallBlobTreeGuard()
 {
+    // no reinstalar: el puntero al original ya apunta al trampolin de Detours,
+    // reasignarlo lo devolveria a la funcion parcheada y quedaria recursion infinita
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
+    oEntry = (tEntry)S4(BLOB_ENTRY);
+
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)oEntry, hkEntry);

@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "detours.h"
+#include "../s4_base.h"
 #include <cstring>
 #include <cstdint>
 
@@ -50,8 +51,8 @@ namespace
     }
 
     typedef char(__fastcall* tLoad)(void*, void*, void*);
-    tLoad oLoad1 = (tLoad)LOAD_ENCHANT;
-    tLoad oLoad2 = (tLoad)LOAD_ENCHANT_LEVEL;
+    tLoad oLoad1 = nullptr;
+    tLoad oLoad2 = nullptr;
 
     char __fastcall hkLoad1(void* thisptr, void* edx, void* a2)
     {
@@ -100,8 +101,17 @@ namespace
 
 void InstallEnchantOOBFix()
 {
-    RepointCall(MEMCPY_SITE_1, (void*)guard1);
-    RepointCall(MEMCPY_SITE_2, (void*)guard2);
+    // no reinstalar: el puntero al original ya apunta al trampolin de Detours,
+    // reasignarlo lo devolveria a la funcion parcheada y quedaria recursion infinita
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
+    oLoad1 = (tLoad)S4(LOAD_ENCHANT);
+    oLoad2 = (tLoad)S4(LOAD_ENCHANT_LEVEL);
+
+    RepointCall(S4(MEMCPY_SITE_1), (void*)guard1);
+    RepointCall(S4(MEMCPY_SITE_2), (void*)guard2);
 
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());

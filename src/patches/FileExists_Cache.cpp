@@ -1,13 +1,15 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "detours.h"
+#include "../s4_base.h"
 #include <string>
 #include <unordered_map>
 
 namespace
 {
     typedef bool(__cdecl* tFileExists)(const char*);
-    tFileExists oFileExists = (tFileExists)0x01B7AFB0;
+    const uintptr_t FILE_EXISTS = 0x01B7AFB0;
+    tFileExists oFileExists = nullptr;
 
     std::unordered_map<std::string, bool> g_cache;
     SRWLOCK g_lock = SRWLOCK_INIT;
@@ -48,6 +50,14 @@ namespace
 
 void InstallFileExistsCache()
 {
+    // no reinstalar: el puntero al original ya apunta al trampolin de Detours,
+    // reasignarlo lo devolveria a la funcion parcheada y quedaria recursion infinita
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
+    oFileExists = (tFileExists)S4(FILE_EXISTS);
+
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(PVOID&)oFileExists, hkFileExists);
