@@ -39,6 +39,16 @@ static const uintptr_t PERSP_FOV     = 0x00B83FF0;
 // Fuente de tiempo del engine: ~15ms de resolucion, o sea delta grueso a fps alto.
 static const uintptr_t TIME_GET      = 0x00BAEC50;
 
+// SetDrop, el metodo que el lua de cada arma usa para fijar su caida. Hay uno por clase
+// de estado: CAttackState y su version extendida. Los dos guardan valor + vec3, cada uno
+// en su offset. De los 208 scripts, el unico con +-50000 es el plasma; bat y katana usan
+// +-20000, doublesword +-10000 y countersword +-4000. O sea el drop mas grande es el del
+// plasma, y de ahi sale el pico de su stun sin numeros magicos.
+static const uintptr_t SET_DROP_BASE = 0x0053B750;   // CAttackState::SetDrop
+static const uintptr_t SET_DROP_EX   = 0x0053F740;   // CAttackStateEx::SetDrop
+
+static volatile float largest_drop = 50000.0f;       // fallback: lo que trae el plasma
+
 // FOV normal del juego (correr suma ~+20 sobre esto). Se usa offset ADITIVO para
 // preservar ese +20 y la transicion suave nativa, en vez de aplanar a un valor fijo.
 static const float BASE_NORMAL_FOV = 60.0f;
@@ -68,6 +78,10 @@ static persp_t orig_persp = (persp_t)PERSP_FOV;
 
 typedef DWORD(__fastcall* timeget_t)(int);
 static timeget_t orig_timeget = (timeget_t)TIME_GET;
+
+typedef void(__fastcall* setdrop_t)(void*, void*, unsigned, unsigned*);
+static setdrop_t orig_setdrop_base = (setdrop_t)SET_DROP_BASE;
+static setdrop_t orig_setdrop_ex   = (setdrop_t)SET_DROP_EX;
 
 static LARGE_INTEGER g_qpcFreq = { 0 };
 static LARGE_INTEGER g_qpcStart = { 0 };
@@ -99,6 +113,40 @@ static DWORD __fastcall patched_timeget(int param_1)
     if (InterlockedCompareExchange(&g_timeInit, 1, 0) == 0)
         g_timeBase = orig_timeget(param_1) - gameMs;
     return g_timeBase + gameMs;
+}
+
+// Se queda con la caida mas grande que declara el lua, que es la del plasma. Corre una vez
+// por arma al crear los estados, no por golpe.
+static void NoteDrop(unsigned value, unsigned* vec)
+{
+    float mag = 0.0f;
+    if (vec)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            float f = *(float*)&vec[i];
+            if (f < 0.0f) f = -f;
+            if (f > mag) mag = f;
+        }
+    }
+    float v = *(float*)&value;
+    if (v < 0.0f) v = -v;
+    if (v > mag) mag = v;
+
+    if (mag > largest_drop)
+        largest_drop = mag;
+}
+
+static void __fastcall patched_setdrop_base(void* ecx, void* edx, unsigned value, unsigned* vec)
+{
+    NoteDrop(value, vec);
+    orig_setdrop_base(ecx, edx, value, vec);
+}
+
+static void __fastcall patched_setdrop_ex(void* ecx, void* edx, unsigned value, unsigned* vec)
+{
+    NoteDrop(value, vec);
+    orig_setdrop_ex(ecx, edx, value, vec);
 }
 
 // Busy-loop preciso (spin apretado, sin Sleep) gateado por el toggle del juego, y el
@@ -171,8 +219,11 @@ static void __fastcall patched_move_actor_by(void* ecx, void* edx, float x, floa
 
         // multiplicadores planos (sin frametime), o sea altura constante a cualquier FPS
         if (state == 45) {                          // stun-drop del plasma
+            // El pico sale del propio valor del lua: drop / Hz de fisica. Con el 50000 del
+            // plasma a 60 Hz da 833, que es de donde venia el 850 hardcodeado.
+            const float spike = -(largest_drop / physics_hz);
             if (y < -50.0f) {
-                adjustedY = plasmaFirst ? -850.0f : 0.0f;
+                adjustedY = plasmaFirst ? spike : 0.0f;
                 plasmaFirst = false;
             }
         }
@@ -250,6 +301,8 @@ static DWORD WINAPI main_thread(LPVOID)
     DetourAttach(&(PVOID&)orig_move_actor_by, patched_move_actor_by);
     DetourAttach(&(PVOID&)orig_persp, patched_persp);
     DetourAttach(&(PVOID&)orig_timeget, patched_timeget);
+    DetourAttach(&(PVOID&)orig_setdrop_base, patched_setdrop_base);
+    DetourAttach(&(PVOID&)orig_setdrop_ex, patched_setdrop_ex);
     DetourTransactionCommit();
 
     CreateThread(nullptr, 0, hotkeys, nullptr, 0, nullptr);
