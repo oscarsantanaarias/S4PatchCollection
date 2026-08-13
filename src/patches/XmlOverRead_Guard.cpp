@@ -15,8 +15,8 @@ namespace
     // del NUL, el caller recibe el NUL y para ahí. Input válido: el retorno queda
     // antes del NUL (hay más contenido) -> sin cambios.
 
-    const uintptr_t COMMENT = 0x01B47500; // __thiscall(this, cursor, out, endTag)
-    const uintptr_t DELIM   = 0x01B45780; // __cdecl(cursor, delim?, ...) -> cursor
+    const uintptr_t COMMENT = 0x00B8F1C0; // __thiscall(this, cursor, out, endTag)
+    const uintptr_t DELIM   = 0x00B8D7C0; // __cdecl(cursor, delim?, ...) -> cursor
 
     // Clampa `ret` para que no supere el primer NUL alcanzable desde `from`.
     // Solo lee bytes válidos (se detiene en el NUL, que está dentro del buffer).

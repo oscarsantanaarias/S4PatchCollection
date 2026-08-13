@@ -45,10 +45,14 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>C:\S4Plain\</OutDir>
+    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <TargetName>sneoz</TargetName>
+    <TargetExt>.asi</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>C:\S4Plain\</OutDir>
+    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <TargetName>sneoz</TargetName>
+    <TargetExt>.asi</TargetExt>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -87,29 +91,31 @@
       <AdditionalLibraryDirectories>$(ProjectDir)..\third_party;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>detours.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>if not "$(S4ClientDir)"=="" copy /Y "$(TargetPath)" "$(S4ClientDir)$(TargetName)$(TargetExt)"</Command>
+      <Message>Deploy</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="patches\Enchant_OOB_Fix.cpp" />
-    <ClCompile Include="patches\Arcade_StackOverflow_Fix.cpp" />
+    <ClCompile Include="Console.cpp" />
     <ClCompile Include="patches\Arcade_Alloc_Fix.cpp" />
-    <ClCompile Include="patches\StructVector_Cap_Fix.cpp" />
-    <ClCompile Include="patches\HttpImageCache_Fix.cpp" />
     <ClCompile Include="patches\FileExists_Cache.cpp" />
-    <ClCompile Include="patches\Memory_Jump_Fix.cpp" />
-    <ClCompile Include="patches\LoadingTip_Cache.cpp" />
     <ClCompile Include="patches\X7Decrypt_Guard.cpp" />
-    <ClCompile Include="patches\BlobTree_Guard.cpp" />
-    <ClCompile Include="patches\Scene_Leak_Fix.cpp" />
-    <ClCompile Include="patches\S4hd_Mount_Guard.cpp" />
-    <ClCompile Include="patches\ResWrapper_Leak_Fix.cpp" />
     <ClCompile Include="patches\LzoS4_Size_Guard.cpp" />
-    <ClCompile Include="patches\P2P_Container_DoS_Guard.cpp" />
-    <ClCompile Include="patches\IDocument_Reload_Leak_Fix.cpp" />
     <ClCompile Include="patches\XmlOverRead_Guard.cpp" />
+    <ClCompile Include="patches\HttpImageCache_Fix.cpp" />
+    <ClCompile Include="patches\ResWrapper_Leak_Fix.cpp" />
+    <ClCompile Include="patches\Manifest_Read_Clamp.cpp" />
+    <ClCompile Include="patches\Lzo_Unbounded_Guard.cpp" />
     <ClCompile Include="patches\Heap_Fixes.cpp" />
-    <ClCompile Include="enhancements\Fps.cpp" />
-    <ClCompile Include="enhancements\New_Actor_State.cpp" />
+    <ClCompile Include="overlay\Overlay.cpp" />
+    <ClCompile Include="overlay\imgui\imgui.cpp" />
+    <ClCompile Include="overlay\imgui\imgui_draw.cpp" />
+    <ClCompile Include="overlay\imgui\imgui_tables.cpp" />
+    <ClCompile Include="overlay\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="overlay\imgui\imgui_impl_dx9.cpp" />
+    <ClCompile Include="overlay\imgui\imgui_impl_win32.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

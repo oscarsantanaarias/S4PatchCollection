@@ -5,25 +5,27 @@
 
 namespace
 {
-    // Every LZO caller that does `new[](header+1)` (wrap 0xFFFFFFFF->0) and then
-    // passes the raw attacker header as the decompress capacity to
-    // lzo1x_decompress_safe (0x01b7cd50). The two sites per caller are hooked with
-    // the SAME stateless clamp: alloc and capacity each sanitize the header, so
-    // they stay consistent. new[] = 0x01b25574 (shared), decompressor = 0x01b7cd50.
+    // Cada caller LZO que hace new[](header+1) (con wrap 0xFFFFFFFF->0) y despues le
+    // pasa el header crudo del atacante como capacidad a lzo1x_decompress_safe
+    // (0x00B61BB0). Los dos sites de cada caller llevan el MISMO clamp sin estado: el
+    // alloc y la capacidad sanitizan el header igual, asi que no se desincronizan.
+    // new[] = 0x00B59A16 (thunk a la IAT), decompresor = 0x00B61BB0.
+    //
+    // La lista sale de los xrefs al decompresor: 8 callers, 6 con su new[] pegado (los
+    // vulnerables). Los otros dos no entran: 0x00A0EA20 es un wrapper que no allocatea
+    // y 0x008B8290 pide new(size) sin el +1, o sea alloc == capacidad.
     struct Pair { uintptr_t newSite; uintptr_t decSite; };
     const Pair SITES[] = {
-        { 0x01BF49DF, 0x01BF4A17 }, // FUN_01bf4730  (.s4 blob)
-        { 0x00F6AED7, 0x00F6B04A }, // FUN_00f6a2c0  (generic encrypted-LZO decoder, 64 call-sites)
-        { 0x01C165BC, 0x01C165F4 }, // FUN_01c16300  (.s4)
-        { 0x01C16EFC, 0x01C16F34 }, // FUN_01c16c40  (.s4)
-        { 0x01C1784C, 0x01C17884 }, // FUN_01c17590  (.s4)
-        { 0x01C181A6, 0x01C181DE }, // FUN_01c17ef0  (.s4)
-        { 0x01C4DB6F, 0x01C4DBA7 }, // FUN_01c4d8a0  (.s4)
-        { 0x01B4301B, 0x01B430DB }, // FUN_01b42c50  (.x7 encrypted container)
+        { 0x00B888CD, 0x00B8897B }, // decoder encriptado ^0xFE292513
+        { 0x00B8BD2A, 0x00B8BDF9 }, // decoder encriptado ^0xFE292513
+        { 0x00BFF79F, 0x00BFF7D7 },
+        { 0x00C0028F, 0x00C002C7 },
+        { 0x00C00F5F, 0x00C00F97 },
+        { 0x00C018DF, 0x00C01917 },
     };
 
-    // ponytail: 128 MiB ceiling on a decompressed blob; raise if a legit resource
-    // ever needs more. Bounds both the alloc and the decompress capacity.
+    // Techo de 128 MiB para un blob descomprimido; subirlo si algun recurso legitimo
+    // necesita mas. Acota el alloc y la capacidad del decompress.
     const unsigned MAX_OUT = 0x08000000;
 
     unsigned Sane(unsigned v) { return v > MAX_OUT ? MAX_OUT : v; }

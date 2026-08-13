@@ -4,7 +4,7 @@
 
 namespace
 {
-    const uintptr_t ARCADE_ALLOC = 0x01155B90;
+    const uintptr_t ARCADE_ALLOC = 0x00998C90;
     const unsigned  STREAM_MAX   = 0x400000;
 
     typedef int(__fastcall* tAlloc)(void*, void*, unsigned);

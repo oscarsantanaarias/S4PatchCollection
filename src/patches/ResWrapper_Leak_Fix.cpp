@@ -5,8 +5,8 @@
 
 namespace
 {
-    const uintptr_t LOAD_OR_ADOPT = 0x01B32730;
-    const uintptr_t FACTORY_SITE  = 0x01B32807;
+    const uintptr_t LOAD_OR_ADOPT = 0x00B74350;
+    const uintptr_t FACTORY_SITE  = 0x00B7441E;
 
     thread_local void* g_wrapper = nullptr;
 
