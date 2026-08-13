@@ -1,30 +1,30 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <detours.h>
-#include <unordered_map>
 #include <string>
-#include <mutex>
 #include <cstring>
 #include <cstdint>
 #include "../s4_base.h"
 
 namespace
 {
-    // INTERN apagado: en este build el loader normaliza la clave in place ANTES del
-    // lookup y usa esa misma para el insert, o sea las claves coinciden y no hay leak
-    // por-carga. Internar agregaria un AddRef sobre objetos que el juego si libera, o
-    // sea un UAF.
+    // Habia una cache que internaba imagenes por ruta: se saco. El loader normaliza la
+    // clave en el sitio y busca e inserta con esa misma, o sea la cache interna del juego
+    // si acierta y no habia leak por-carga. Ademas devolver temprano se salteaba el
+    // registro del recurso en la escena, y el AddRef por vtbl[1] era una suposicion sobre
+    // un puntero que el loader devuelve PRESTADO.
     //
-    // ANTIRELOAD es independiente y ataca el spam de recargas / Not-Responding. Efecto
-    // conocido: la ventana de 500ms por slot a veces saltea una recarga y deja un item
-    // del collectionbook en una scene vieja (bloque rojo/roto). Bajar ANTIRELOAD_MS o
-    // apagarlo si molesta.
-    const bool   INTERN = false;
-    const bool   ANTIRELOAD = true;
-    const DWORD  ANTIRELOAD_MS = 500;
+    // Queda el anti-reload contra el spam de recargas. Pero no puede saltear a ciegas:
+    // lo PRIMERO que hace SetScene es guardar la ruta en el string del slot
+    // (this + 0xbc + slot*0x18). Si no se llama, ese campo queda sin escribir y quien lo
+    // lea despues se lleva un puntero nulo. De ahi salia tambien el item de collectionbook
+    // que quedaba en una scene vieja. Ahora saltea solo si el slot YA tiene esa ruta.
 
-    const uintptr_t SCENE_LOADER_ADDR = 0x01162E60;
-    const uintptr_t SET_SCENE_ADDR    = 0x01177E90;
+    const DWORD ANTIRELOAD_MS = 500;
+
+    const uintptr_t SET_SCENE_ADDR = 0x01177E90;
+    const unsigned  SLOT_PATH_OFF = 0xbc;   // std::string por slot, stride 0x18
+    const unsigned  SLOT_STRIDE = 0x18;
 
     std::string Normalize(const char* path)
     {
@@ -37,65 +37,35 @@ namespace
         return s;
     }
 
-    typedef int (__fastcall* tVtblCall)(void* thisptr, void* edx);
-    void AddRef(void* obj)
+    // std::string de MSVC: buffer o puntero en +0, tamano en +0x10, capacidad en +0x14.
+    // Devuelve false si no parece un string valido, y ahi no se saltea nada.
+    bool LeerCrudo(void* obj, unsigned slot, const char** texto, unsigned* largo)
     {
-        if (!obj) return;
-        void** vtbl = *(void***)obj;
-        ((tVtblCall)vtbl[1])(obj, nullptr);
-    }
-
-    typedef void* (__fastcall* tLoadScene)(void* thisptr, void* edx, char* path, void* a2, void* a3);
-    tLoadScene oLoadScene = nullptr;
-
-    const size_t CACHE_CAP = 8192;
-    std::unordered_map<std::string, void*> g_cache;
-    std::mutex g_cacheMutex;
-
-    bool EndsWithCI(const std::string& s, const char* ext)
-    {
-        size_t n = s.size(), m = strlen(ext);
-        return n >= m && s.compare(n - m, m, ext) == 0;
-    }
-    bool ShouldIntern(const std::string& key)
-    {
-        static const char* kImageExts[] = {
-            ".dds", ".tga", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff", ".dxt"
-        };
-        for (const char* e : kImageExts)
-            if (EndsWithCI(key, e)) return true;
-        return false;
-    }
-
-    void* __fastcall hkLoadScene(void* thisptr, void* edx, char* path, void* a2, void* a3)
-    {
-        if (!path)
-            return oLoadScene(thisptr, edx, path, a2, a3);
-
-        const std::string key = Normalize(path);
-        if (!ShouldIntern(key))
-            return oLoadScene(thisptr, edx, path, a2, a3);
-
+        unsigned char* p = (unsigned char*)obj + SLOT_PATH_OFF + slot * SLOT_STRIDE;
+        __try
         {
-            std::lock_guard<std::mutex> lk(g_cacheMutex);
-            auto it = g_cache.find(key);
-            if (it != g_cache.end() && it->second)
-            {
-                AddRef(it->second);
-                return it->second;
-            }
+            unsigned size = *(unsigned*)(p + 0x10);
+            unsigned res  = *(unsigned*)(p + 0x14);
+            if (res < 15 || size > res || size > 0x1000) return false;
+            const char* s = (res < 16) ? (const char*)p : *(const char**)p;
+            if (!s) return false;
+            *texto = s;
+            *largo = size;
+            return true;
         }
-        void* obj = oLoadScene(thisptr, edx, path, a2, a3);
-        if (obj)
+        __except (EXCEPTION_EXECUTE_HANDLER)
         {
-            std::lock_guard<std::mutex> lk(g_cacheMutex);
-            if (g_cache.size() < CACHE_CAP && g_cache.find(key) == g_cache.end())
-            {
-                AddRef(obj);
-                g_cache[key] = obj;
-            }
+            return false;
         }
-        return obj;
+    }
+
+    bool RutaDelSlot(void* obj, unsigned slot, std::string& out)
+    {
+        const char* s = nullptr;
+        unsigned n = 0;
+        if (!LeerCrudo(obj, slot, &s, &n)) return false;
+        out.assign(s, n);
+        return true;
     }
 
     typedef void (__thiscall* tSetScene)(void* thisptr, unsigned slot, char* path);
@@ -103,20 +73,28 @@ namespace
 
     struct SlotState { std::string path; DWORD time; };
     SlotState g_slot[10];
-    std::mutex g_slotMutex;
+    CRITICAL_SECTION g_cs;
 
     void __fastcall hkSetScene(void* thisptr, void* edx, unsigned slot, char* path)
     {
-        if (ANTIRELOAD && path && slot < 10)
+        if (path && slot < 10 && thisptr)
         {
             const std::string key = Normalize(path);
             const DWORD now = GetTickCount();
-            std::lock_guard<std::mutex> lk(g_slotMutex);
+
+            std::string actual;
+            const bool yaPuesta = RutaDelSlot(thisptr, slot, actual) && Normalize(actual.c_str()) == key;
+
+            EnterCriticalSection(&g_cs);
             SlotState& s = g_slot[slot];
-            if (s.path == key && (now - s.time) < ANTIRELOAD_MS)
-                return;
+            const bool repetida = (s.path == key) && (now - s.time) < ANTIRELOAD_MS;
             s.path = key;
             s.time = now;
+            LeaveCriticalSection(&g_cs);
+
+            // solo se saltea si ademas el juego ya tiene el estado puesto
+            if (repetida && yaPuesta)
+                return;
         }
         oSetScene(thisptr, slot, path);
     }
@@ -129,11 +107,10 @@ void InstallSceneLeakFix()
     if (installed) return;
     installed = true;
 
-    oLoadScene = (tLoadScene)S4(SCENE_LOADER_ADDR);
-    oSetScene  = (tSetScene)S4(SET_SCENE_ADDR);
+    InitializeCriticalSection(&g_cs);
+    oSetScene = (tSetScene)S4(SET_SCENE_ADDR);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
-    if (INTERN)     DetourAttach(&(PVOID&)oLoadScene, hkLoadScene);
-    if (ANTIRELOAD) DetourAttach(&(PVOID&)oSetScene, hkSetScene);
+    DetourAttach(&(PVOID&)oSetScene, hkSetScene);
     DetourTransactionCommit();
 }

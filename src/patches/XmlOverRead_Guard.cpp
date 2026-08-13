@@ -20,13 +20,19 @@ namespace
     const uintptr_t DELIM   = 0x01006880; // __cdecl(cursor, delim?, ...) -> cursor
 
     // Clampa `ret` para que no supere el primer NUL alcanzable desde `from`.
-    // Solo lee bytes válidos (se detiene en el NUL, que está dentro del buffer).
+    // La lectura queda estrictamente dentro de [from, ret): nunca derefea en `ret`,
+    // que es justo el byte de mas alla del buffer que esto viene a evitar. Y si `ret`
+    // no parece del mismo buffer (retorno hacia atras, o demasiado lejos), no se toca:
+    // ahi caminar buscando el NUL puede irse a una pagina sin mapear.
+    const ptrdiff_t MAX_AVANCE = 4096;
+
     static unsigned char* Clamp(unsigned char* from, unsigned char* ret)
     {
-        if (!ret || !from) return ret;
-        unsigned char* p = from;
-        while (*p && p < ret) p++;
-        return (p < ret) ? p : ret;   // NUL antes de ret -> clamp; si no, sin cambio
+        if (!ret || !from || ret <= from) return ret;
+        if (ret - from > MAX_AVANCE) return ret;
+        for (unsigned char* p = from; p < ret; ++p)
+            if (!*p) return p;
+        return ret;
     }
 
     typedef unsigned char*(__fastcall* tComment)(void*, void*, unsigned char*, void*, int);

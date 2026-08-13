@@ -92,6 +92,12 @@ static void* __fastcall h_c00fce320(void* ecx, void* edx, int a1) {
 
 extern "C" void StartHeapFixes(int lfh, int failsoft, int unused) {
     (void)unused;
+    // no reinstalar: los punteros o_ ya apuntan a los trampolines de Detours,
+    // enganchar de nuevo hookearia el trampolin y quedaria recursion infinita
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     if (lfh) CreateThread(0, 0, LfhThread, 0, 0, 0);
     if (!failsoft) return;
 
