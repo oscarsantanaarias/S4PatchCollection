@@ -41,6 +41,11 @@ namespace
 
 void InstallX7DecryptGuard()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oDecoderA = (tDecoder)DECODER_A;
     oDecoderB = (tDecoder)DECODER_B;
 

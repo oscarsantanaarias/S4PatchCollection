@@ -92,7 +92,8 @@
       <AdditionalDependencies>detours.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>if not "$(S4ClientDir)"=="" copy /Y "$(TargetPath)" "$(S4ClientDir)$(TargetName)$(TargetExt)"</Command>
+      <Command>if not "$(S4ClientDir)"=="" copy /Y "$(TargetPath)" "$(S4ClientDir)$(TargetName)$(TargetExt)"
+      exit /b 0</Command>
       <Message>Deploy</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>

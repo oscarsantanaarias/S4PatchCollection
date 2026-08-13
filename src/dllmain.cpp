@@ -32,7 +32,7 @@ static DWORD WINAPI InitThread(LPVOID)
     StartHeapFixes(1, 0, 0);
     StartGameEnhancements();
     StartOverlay();
-    LoadLibraryA("inflar.dll");
+    
     return 0;
 }
 
@@ -40,7 +40,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
 {
     if (reason == DLL_PROCESS_ATTACH)
     {
-        LoadLibraryA("mutex.dll");
+     
         DisableThreadLibraryCalls(hModule);
         CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
     }

@@ -43,6 +43,11 @@ namespace
 
 void InstallLzoUnboundedGuard()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     RepointCall(0x00AFE30F, (void*)shim2048);    // FUN_00afe210 dispatcher P2P -> global DAT_01182840 (0x800), red
     RepointCall(0x00A56428, (void*)shim120000);  // FUN_00a56380 lista S2C -> DAT_0111a0d8 (120000)
     RepointCall(0x00AD3155, (void*)shim120000);  // FUN_00ad30b0 lista S2C -> DAT_011375f8 (120000)

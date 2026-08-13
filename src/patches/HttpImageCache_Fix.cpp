@@ -33,6 +33,11 @@ namespace
 
 void InstallHttpImageCacheFix()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     oInsert = (tInsert)INSERT_FN;
 
     DetourTransactionBegin();

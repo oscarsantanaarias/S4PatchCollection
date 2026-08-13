@@ -258,5 +258,10 @@ static DWORD WINAPI main_thread(LPVOID)
 
 void StartGameEnhancements()
 {
+    // no reinstalar: aplicarlo dos veces romperia el hook
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     CreateThread(nullptr, 0, main_thread, nullptr, 0, nullptr);
 }
