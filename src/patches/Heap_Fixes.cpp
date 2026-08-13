@@ -34,6 +34,11 @@ static DWORD WINAPI LfhThread(LPVOID) {
 
 extern "C" void StartHeapFixes(int lfh, int failsoft, int unused) {
     (void)failsoft; (void)unused;
+    // no reinstalar: una segunda llamada dejaria otro hilo barriendo los heaps
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+
     if (lfh) CreateThread(0, 0, LfhThread, 0, 0, 0);
 }
 
