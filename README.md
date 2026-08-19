@@ -80,6 +80,17 @@ the game keeps keyboard and mouse the rest of the time.
   and closes a file handle on every query, tens of thousands per load, and
   read-only resources don't change while the game runs. The counters are exported
   so the difference is measurable.
+- `Chaser_Announce_Replay_Fix.cpp` - the briefing re-announces the chaser. The
+  briefing handler calls the announcement before its isResult branch and only checks
+  whether the client already has a chaser set, so every briefing that lands mid match
+  replays the banner, the music and the sound cut as if the round were starting again.
+  It can't be fixed on the server: the briefing is the only packet that fills the
+  scoreboard rows, level and clothes included, for a player who joins mid round, and the
+  same packet fires the announcement. The announcement takes isReplay as its third
+  argument, 1 only when the briefing is the caller, so the hook stomps the four functions
+  that make noise with their own ret for the length of that call and puts them back
+  after. Stomped and not skipped because the rest of the announcement still has to run:
+  it is what rebuilds the chaser marker, which the player who just joined needs.
 - `Heap_Fixes.cpp` - turns on the Low Fragmentation Heap for every heap in the
   process, including the ones created later. Fragmentation was ending sessions
   with a freeze while half the address space was still free.

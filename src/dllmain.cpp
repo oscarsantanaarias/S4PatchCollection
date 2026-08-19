@@ -10,6 +10,7 @@ void InstallResWrapperLeakFix();
 void InstallManifestReadClamp();
 void InstallLzoUnboundedGuard();
 void InstallMemoryJumpFix();
+void InstallChaserAnnounceReplayFix();
 void StartGameEnhancements();
 void StartOverlay();
 extern "C" void StartHeapFixes(int lfh, int failsoft, int unused);
@@ -26,6 +27,7 @@ static DWORD WINAPI InitThread(LPVOID)
     InstallManifestReadClamp();
     InstallLzoUnboundedGuard();
     InstallMemoryJumpFix();
+    InstallChaserAnnounceReplayFix();
     StartHeapFixes(1, 0, 0);
     StartGameEnhancements();
     StartOverlay();

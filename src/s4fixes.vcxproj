@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -110,6 +110,7 @@
     <ClCompile Include="patches\Lzo_Unbounded_Guard.cpp" />
     <ClCompile Include="patches\Memory_Jump_Fix.cpp" />
     <ClCompile Include="patches\Heap_Fixes.cpp" />
+    <ClCompile Include="patches\Chaser_Announce_Replay_Fix.cpp" />
     <ClCompile Include="enhancements\Fps.cpp" />
     <ClCompile Include="overlay\Overlay.cpp" />
     <ClCompile Include="overlay\imgui\imgui.cpp" />
