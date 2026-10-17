@@ -1,4 +1,8 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 void InstallArcadeStackOverflowFix();
 void InstallEnchantOOBFix();
@@ -30,8 +34,11 @@ extern "C" void StartHeapFixes(int lfh, int failsoft19, int badAlloc32);
 static DWORD WINAPI InitThread(LPVOID)
 {
     StartResourceLogTest();
+
     InstallDarkModeWindowFix();
+
     InstallSmoothRenderFix();
+
     InstallArcadeStackOverflowFix();
     InstallFileExistsCache();
     InstallMemoryJumpFix();
@@ -50,11 +57,14 @@ static DWORD WINAPI InitThread(LPVOID)
     InstallIDocumentReloadLeakFix();
     InstallXmlOverReadGuard();
     StartHeapFixes(1, 0, 0);
+
     StartHdText();
+
     StartGameEnhancements();
+
     StartNewActorState();
     StartOverlay();
-   
+
     return 0;
 }
 
@@ -62,7 +72,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
 {
     if (reason == DLL_PROCESS_ATTACH)
     {
-       
         DisableThreadLibraryCalls(hModule);
         CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
     }

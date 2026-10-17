@@ -85,20 +85,67 @@ namespace
         return atoi(doc.c_str() + k + 1);
     }
 
+    void SetInt(std::string& doc, const char* key, int value)
+    {
+        const std::string needle = std::string("\"") + key + "\"";
+        const std::string pair = needle + ": " + std::to_string(value);
+        size_t k = doc.find(needle);
+
+        if (k != std::string::npos) {
+            const size_t colon = doc.find(':', k + needle.size());
+
+            if (colon != std::string::npos) {
+                size_t end = colon + 1;
+
+                while (end < doc.size() && (doc[end] == ' ' || doc[end] == '-' || (doc[end] >= '0' && doc[end] <= '9')))
+                    ++end;
+
+                doc.replace(k, end - k, pair);
+                return;
+            }
+        }
+
+        const size_t close = doc.rfind('}');
+
+        if (close == std::string::npos)
+            return;
+
+        size_t last = close;
+
+        while (last > 0 && (doc[last - 1] == '\n' || doc[last - 1] == '\r' || doc[last - 1] == ' '))
+            --last;
+
+        const bool hasKeys = last > 0 && doc[last - 1] != '{';
+        doc.replace(last, close - last, std::string(hasKeys ? "," : "") + "\n  " + pair + "\n");
+    }
+
     void Save()
     {
-        FILE* f = fopen(CONF, "w");
-        if (!f) return;
-        fprintf(f,
-            "{\n"
-            "  \"max_framerate\": %d,\n"
-            "  \"field_of_view\": %d,\n"
-            "  \"center_field_of_view\": %d,\n"
-            "  \"sprint_field_of_view\": %d,\n"
-            "  \"sprint_offset\": %d\n"
-            "}\n",
-            max_framerate, field_of_view, center_field_of_view,
-            sprint_field_of_view, g_sprintOffset);
+        std::string doc = "{\n}\n";
+
+        if (FILE* in = fopen(CONF, "rb")) {
+            doc.clear();
+            char buf[512];
+            size_t n;
+
+            while ((n = fread(buf, 1, sizeof(buf), in)) > 0)
+                doc.append(buf, n);
+
+            fclose(in);
+        }
+
+        SetInt(doc, "max_framerate", max_framerate);
+        SetInt(doc, "field_of_view", field_of_view);
+        SetInt(doc, "center_field_of_view", center_field_of_view);
+        SetInt(doc, "sprint_field_of_view", sprint_field_of_view);
+        SetInt(doc, "sprint_offset", g_sprintOffset);
+
+        FILE* f = fopen(CONF, "wb");
+
+        if (!f)
+            return;
+
+        fwrite(doc.data(), 1, doc.size(), f);
         fclose(f);
     }
 
