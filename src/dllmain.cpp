@@ -17,13 +17,21 @@ void InstallLzoS4SizeGuard();
 void InstallP2PContainerDoSGuard();
 void InstallIDocumentReloadLeakFix();
 void InstallXmlOverReadGuard();
+void InstallSmoothRenderFix();
+void InstallDarkModeWindowFix();
+void InstallCollisionResolverFix();
 void StartGameEnhancements();
 void StartOverlay();
 void StartNewActorState();
+void StartResourceLogTest();
+void StartHdText();
 extern "C" void StartHeapFixes(int lfh, int failsoft19, int badAlloc32);
 
 static DWORD WINAPI InitThread(LPVOID)
 {
+    StartResourceLogTest();
+    InstallDarkModeWindowFix();
+    InstallSmoothRenderFix();
     InstallArcadeStackOverflowFix();
     InstallFileExistsCache();
     InstallMemoryJumpFix();
@@ -42,6 +50,7 @@ static DWORD WINAPI InitThread(LPVOID)
     InstallIDocumentReloadLeakFix();
     InstallXmlOverReadGuard();
     StartHeapFixes(1, 0, 0);
+    StartHdText();
     StartGameEnhancements();
     StartNewActorState();
     StartOverlay();

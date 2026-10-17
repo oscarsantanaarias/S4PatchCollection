@@ -262,12 +262,16 @@ namespace
         return hr;
     }
 
+    extern "C" void ApplySystemTheme(HWND hwnd);
+
     HRESULT __stdcall hkEndScene(LPDIRECT3DDEVICE9 dev)
     {
         if (!g_ready)
         {
             g_window = FindGameWindow();
             if (!g_window) return oEndScene(dev);
+
+            ApplySystemTheme(g_window);
 
             ImGui::CreateContext();
             Style();

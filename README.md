@@ -118,9 +118,20 @@ open, so the game keeps keyboard and mouse the rest of the time.
 
 ## Enhancements
 
-- `Fps.cpp` - unlocks the framerate and keeps the frame-dependent physics behaving
-  the same at any rate: jump height, flight, exo jump, the plasma sword stun drop
-  and weapon spread. Also drives the FOV override the overlay edits, applied at
-  the camera's target field and restored afterwards, because leaving our value in
-  place stops the state machine from ever writing the sprint value again.
+- `Fps.cpp` - unlocks the frame rate (`max_framerate` in `conf.json`, up to
+  1000) and keeps the physics identical to 60 fps. The client integrates
+  movement with whole-millisecond frame times and constants tuned for 60 fps,
+  so above that the collision skin, gravity, fly drag and the one-frame air
+  slam drift. Each one is corrected where it is computed, and the limiter waits
+  on the game clock at the start of the frame to keep input lag low. Also sets
+  the normal, center and sprint field of view. Same code as Season 10, with this
+  build's addresses and actor offsets.
+- `hd_text.cpp` - redraws the client's text with D3DX fonts at screen
+  resolution and draws chat emoji from `<game folder>\emoji\` through
+  `emoji.cpp`. `text_languages.cpp` shapes Arabic and right-to-left text and
+  picks a font that covers CJK and Indic scripts.
+- `resource_log_test.cpp` - resource optimizer. During boot it skips the
+  client's mass scene preload except for the scenes listed in
+  `whitelist_code.inc`; everything else loads on demand the first time the game
+  asks for it.
 - `New_Actor_State.cpp` - actor state additions.
